@@ -9,6 +9,11 @@ export interface PasteStore {
   read(id: string): Promise<ReadResult>;
   /** Read without counting a view or burning. Used for metadata/auth checks. */
   peek(id: string): Promise<ReadResult>;
+  /**
+   * Read and count a view for a paste already known NOT to be burn-after-read
+   * (one round trip; callers peek first). Burn pastes must go through read().
+   */
+  readNonBurn(id: string): Promise<ReadResult>;
   /** Replace the record, preserving the remaining TTL. */
   update(record: PasteRecord): Promise<boolean>;
   delete(id: string): Promise<boolean>;

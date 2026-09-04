@@ -74,6 +74,13 @@ export class RedisStore implements PasteStore {
     return this.runRead(record.burn ? BURN_SCRIPT : READ_SCRIPT, id);
   }
 
+  async readNonBurn(id: string): Promise<ReadResult> {
+    const res = await this.runRead(READ_SCRIPT, id);
+    // Defensive: if it turned into a burn paste between peek and read, don't leak a free view.
+    if (res?.record.burn) return null;
+    return res;
+  }
+
   async peek(id: string): Promise<ReadResult> {
     const p = this.redis.pipeline();
     p.get(KEY.paste(id));

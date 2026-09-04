@@ -28,9 +28,13 @@ export function proxy(request: NextRequest) {
     "upgrade-insecure-requests",
   ].join("; ");
 
+  const embed = request.nextUrl.searchParams.get("embed") === "1";
   const response = NextResponse.next();
-  for (const [k, v] of Object.entries(SECURITY_HEADERS)) response.headers.set(k, v);
-  response.headers.set("Content-Security-Policy", csp);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
+    if (embed && k === "X-Frame-Options") continue;
+    response.headers.set(k, v);
+  }
+  response.headers.set("Content-Security-Policy", embed ? csp.replace("frame-ancestors 'none'", "frame-ancestors *") : csp);
   // Paste pages must never be indexed; the home/docs pages may be.
   const path = request.nextUrl.pathname;
   if (path !== "/" && !path.startsWith("/docs") && !path.startsWith("/api")) {
