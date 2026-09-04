@@ -72,6 +72,28 @@ export async function readPaste(id: string): Promise<PublicPaste> {
   return toPublic(res.record, res.views);
 }
 
+export type PageView =
+  | { mode: "plain" | "encrypted"; paste: PublicPaste }
+  /** Burn-after-read pastes are never read during server rendering; the client reveals them. */
+  | { mode: "burn"; paste: Omit<PublicPaste, "content"> & { content: "" } };
+
+/** Page render: one peek, then one counting read unless the paste is burn-after-read. */
+export async function viewPaste(id: string): Promise<PageView | null> {
+  if (!isValidId(id)) return null;
+  const store = getStore();
+  const peek = await store.peek(id);
+  if (!peek) return null;
+  if (peek.record.burn) {
+    const { content: _c, ...rest } = toPublic(peek.record, peek.views);
+    void _c;
+    return { mode: "burn", paste: { ...rest, content: "" } };
+  }
+  const res = await store.readNonBurn(id);
+  if (!res) return null;
+  void store.incrStat("views").catch(() => {});
+  return { mode: res.record.enc ? "encrypted" : "plain", paste: toPublic(res.record, res.views) };
+}
+
 /** Read without side effects (metadata, previews, auth). */
 export async function peekPaste(id: string): Promise<PublicPaste | null> {
   if (!isValidId(id)) return null;

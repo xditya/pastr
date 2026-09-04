@@ -7,6 +7,13 @@ import { originFrom, pasteUrl } from "@/lib/url";
 
 export const runtime = "nodejs";
 
+/** A plain HTML <form> submission (JavaScript disabled) — send the browser to the new paste. */
+function isBrowserForm(req: Request): boolean {
+  const ct = (req.headers.get("content-type") ?? "").toLowerCase();
+  const accept = req.headers.get("accept") ?? "";
+  return (ct.includes("application/x-www-form-urlencoded") || ct.includes("multipart/form-data")) && accept.includes("text/html");
+}
+
 export async function OPTIONS() {
   return options();
 }
@@ -29,6 +36,7 @@ export async function POST(req: NextRequest) {
     const rawUrl = `${origin}/${paste.id}/raw`;
     const headers = { Location: url, "X-Edit-Token": editToken };
     if (wantsText) return text(`${url}\n`, { status: 201, headers });
+    if (isBrowserForm(req)) return Response.redirect(url, 303);
     return json({ ...paste, url, rawUrl, editToken }, { status: 201, headers });
   } catch (err) {
     return errorResponse(err, wantsText);

@@ -44,6 +44,13 @@ export class MemoryStore implements PasteStore {
     return out;
   }
 
+  async readNonBurn(id: string): Promise<ReadResult> {
+    const e = this.live(id);
+    if (!e || e.record.burn) return null;
+    e.views += 1;
+    return { record: structuredClone(e.record), views: e.views };
+  }
+
   async peek(id: string): Promise<ReadResult> {
     const e = this.live(id);
     return e ? { record: structuredClone(e.record), views: e.views } : null;
