@@ -79,6 +79,21 @@ export class MemoryStore implements PasteStore {
     return { ...this.counters };
   }
 
+  async recent(limit: number) {
+    return [...this.pastes.entries()]
+      .filter(([id]) => this.live(id))
+      .map(([id, e]) => ({ id, created: e.record.created }))
+      .sort((a, b) => b.created - a.created)
+      .slice(0, limit);
+  }
+
+  async mostReported(limit: number) {
+    return [...this.reports.entries()]
+      .map(([id, list]) => ({ id, reports: list.length }))
+      .sort((a, b) => b.reports - a.reports)
+      .slice(0, limit);
+  }
+
   async ping() {
     return true;
   }

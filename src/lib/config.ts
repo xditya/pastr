@@ -5,8 +5,8 @@
  */
 
 export const SITE = {
-  name: "paster",
-  tagline: "Paste. Share. Gone when you say so.",
+  name: "pastly",
+  tagline: "Paste it. Share it. Gone when you say so.",
   description:
     "A fast, clean pastebin with syntax highlighting, client-side encryption, expiry and burn-after-read.",
   repo: "https://github.com/xditya/paster",
@@ -24,6 +24,17 @@ export const EXPIRIES = [
 
 export type ExpiryId = (typeof EXPIRIES)[number]["id"];
 export const DEFAULT_EXPIRY: ExpiryId = "7d";
+
+/**
+ * Operator policy: MAX_EXPIRY caps how long a paste may live ("30d" disables "never").
+ * Unset = everything allowed. Server-only; pages pass the allowed list to the editor.
+ */
+export function allowedExpiries(): ExpiryId[] {
+  const max = process.env.MAX_EXPIRY;
+  const cap = EXPIRIES.find((e) => e.id === max);
+  if (!cap || cap.seconds === null) return EXPIRIES.map((e) => e.id);
+  return EXPIRIES.filter((e) => e.seconds !== null && e.seconds <= cap.seconds).map((e) => e.id);
+}
 
 function bytesFromEnv(value: string | undefined, fallback: number): number {
   const n = Number(value);

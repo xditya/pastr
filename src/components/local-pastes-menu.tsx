@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { History, Lock, Flame, Trash2 } from "lucide-react";
-import { forgetPaste } from "@/lib/local";
+import { useRouter } from "next/navigation";
+import { Download, History, Lock, Flame, Trash2, Upload } from "lucide-react";
+import { exportLocal, forgetPaste, importLocal } from "@/lib/local";
 import { useLocalPastes } from "@/hooks/use-local";
+import { useToast } from "@/components/ui/toast";
 import { formatRelative } from "@/lib/expiry";
 import { getLang } from "@/lib/langs";
 import { IconButton } from "@/components/ui/button";
@@ -14,6 +16,44 @@ export function LocalPastesMenu() {
   const [open, setOpen] = useState(false);
   const pastes = useLocalPastes();
   const ref = useRef<HTMLDivElement>(null);
+  const importRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  const { push } = useToast();
+  const [goto, setGoto] = useState("");
+
+  const openById = (e: React.FormEvent) => {
+    e.preventDefault();
+    const raw = goto.trim();
+    if (!raw) return;
+    let target = raw;
+    try {
+      const u = new URL(raw);
+      target = u.pathname.replace(/^\//, "") + u.hash;
+    } catch {
+      /* plain id */
+    }
+    setOpen(false);
+    setGoto("");
+    router.push(`/${target}`);
+  };
+
+  const doExport = () => {
+    const blob = new Blob([exportLocal()], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "pastly-history.json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+
+  const doImport = async (file: File) => {
+    try {
+      const n = importLocal(await file.text());
+      push("success", `Imported ${n} paste${n === 1 ? "" : "s"}`);
+    } catch {
+      push("error", "That file isn't a pastly history export");
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -47,7 +87,29 @@ export function LocalPastesMenu() {
         >
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="text-[12px] font-medium text-fg-muted">Your pastes</span>
-            <span className="text-[11px] text-fg-faint">stored in this browser only</span>
+            <span className="font-mono text-[11px] text-fg-faint">this browser only</span>
+          </div>
+          <form onSubmit={openById} className="flex gap-1.5 border-b border-border px-3 py-2">
+            <input
+              value={goto}
+              onChange={(e) => setGoto(e.target.value)}
+              placeholder="Open a paste id or link"
+              aria-label="Open a paste by id or link"
+              className="h-7 min-w-0 flex-1 rounded-sm border border-border bg-bg px-2 font-mono text-[12px]"
+            />
+            <button type="submit" className="rounded-sm border border-border px-2 text-[12px] text-fg-muted hover:border-accent hover:text-fg">
+              Open
+            </button>
+          </form>
+          <div className="flex items-center gap-1 border-b border-border px-2 py-1.5 text-[11.5px] text-fg-faint">
+            <button type="button" onClick={doExport} disabled={pastes.length === 0} className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 hover:bg-surface-2 hover:text-fg disabled:opacity-50">
+              <Download className="size-3" /> Export
+            </button>
+            <button type="button" onClick={() => importRef.current?.click()} className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 hover:bg-surface-2 hover:text-fg">
+              <Upload className="size-3" /> Import
+            </button>
+            <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => e.target.files?.[0] && void doImport(e.target.files[0])} />
+            <span className="ml-auto">edit tokens &amp; keys included</span>
           </div>
           {pastes.length === 0 ? (
             <p className="px-3 py-6 text-center text-[13px] text-fg-faint">Pastes you create will show up here.</p>

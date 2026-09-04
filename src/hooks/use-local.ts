@@ -3,8 +3,8 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { DEFAULT_PREFS, onLocalChange, type LocalPaste, type Prefs } from "@/lib/local";
 
-const PASTES_KEY = "paster:pastes";
-const PREFS_KEY = "paster:prefs";
+const PASTES_KEY = "pastly:pastes";
+const PREFS_KEY = "pastly:prefs";
 
 function readRaw(key: string): string {
   try {

@@ -16,11 +16,11 @@ export function Shell({ children, actions, wide }: { children: ReactNode; action
             <span>{SITE.name}</span>
           </Link>
           <nav className="ml-1 hidden items-center gap-0.5 sm:flex" aria-label="Primary">
-            <Link href="/" className="rounded-md px-2 py-1 text-[13px] text-fg-muted hover:bg-surface-2 hover:text-fg">
-              New
+            <Link href="/" className="rounded-md px-2 py-1 text-[13.5px] font-medium text-fg-muted transition-colors hover:text-fg">
+              new
             </Link>
-            <Link href="/docs" className="rounded-md px-2 py-1 text-[13px] text-fg-muted hover:bg-surface-2 hover:text-fg">
-              API
+            <Link href="/docs" className="rounded-md px-2 py-1 text-[13.5px] font-medium text-fg-muted transition-colors hover:text-fg">
+              api &amp; cli
             </Link>
           </nav>
           <div className="ml-auto flex items-center gap-1.5">
@@ -32,17 +32,21 @@ export function Shell({ children, actions, wide }: { children: ReactNode; action
       </header>
       <main className={`mx-auto flex w-full flex-1 flex-col px-4 ${wide ? "max-w-[1400px]" : "max-w-6xl"}`}>{children}</main>
       <footer className="border-t border-border">
-        <div className={`mx-auto flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-[12px] text-fg-faint ${wide ? "max-w-[1400px]" : "max-w-6xl"}`}>
+        <div className={`mx-auto flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 font-mono text-[12.5px] text-fg-faint ${wide ? "max-w-[1400px]" : "max-w-6xl"}`}>
           <span>{SITE.name}</span>
           <span aria-hidden>·</span>
-          <Link href="/docs" className="hover:text-fg">
-            API &amp; CLI
+          <Link href="/docs" className="transition-colors hover:text-fg">
+            api &amp; cli
           </Link>
           <span aria-hidden>·</span>
-          <a href={SITE.repo} className="hover:text-fg" rel="noopener noreferrer" target="_blank">
-            Source
+          <Link href="/docs#security" className="transition-colors hover:text-fg">
+            security
+          </Link>
+          <span aria-hidden>·</span>
+          <a href={SITE.repo} className="transition-colors hover:text-fg" rel="noopener noreferrer" target="_blank">
+            source
           </a>
-          <span className="ml-auto">No ads. No accounts. No tracking.</span>
+          <span className="ml-auto">no ads · no accounts · no tracking</span>
         </div>
       </footer>
     </div>

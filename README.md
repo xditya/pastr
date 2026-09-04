@@ -1,15 +1,19 @@
-# paster
+# pastly
 
 A fast, clean pastebin. Paste text, get a link, decide when it disappears.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fxditya%2Fpaster&env=UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN&envDescription=Create%20a%20free%20Redis%20database%20at%20console.upstash.com%20and%20paste%20its%20REST%20URL%20and%20token.&envLink=https%3A%2F%2Fconsole.upstash.com&project-name=pastly&repository-name=pastly)
 
 - **Syntax highlighting** for 70 languages (server-rendered, light and dark), with linkable line ranges, wrap toggle and rendered Markdown.
 - **Expiry you control**: 10 minutes to never, enforced by the database rather than a cleanup job. **Burn-after-read** destroys a paste the moment it is opened.
 - **End-to-end encryption** in the browser (AES-256-GCM). The key lives in the link after `#`, or is derived from a password. The server only ever stores ciphertext.
 - **No accounts, no ads, no tracking.** Your pastes and their edit tokens are remembered in *your* browser so you can edit or delete them later.
-- **Terminal-first API**: `curl --data-binary @file host/api/v1/pastes` prints a link. hastebin clients keep working.
+- **Terminal-first API and CLI**: `curl --data-binary @file host/api/v1/pastes` prints a link; `pastly` (npm) or the curl-installable shell script paste from stdin, files or the clipboard. hastebin clients keep working.
+- **Warns before you leak**: the editor flags text that looks like an API key, private key, JWT or password before you save.
+- **Operator tools**: a recent/most-reported listing behind `ADMIN_TOKEN`, abuse reports with a webhook, an expiry cap (`MAX_EXPIRY`), and SDK telemetry switched off.
 - **Serverless**: Next.js on Vercel with Upstash Redis. Nothing to run.
 
-Built as a successor to [pasty](https://github.com/xditya/pasty).
+Built as a successor to [pasty](https://github.com/xditya/pasty). The name is pastly (the repository keeps its codename, `paster`); the visual language borrows the tokens of [engram](https://engram.xditya.me): three greys, one accent, hairlines instead of shadows, Geist and Geist Mono. The feature set comes from [docs/RESEARCH.md](docs/RESEARCH.md), a sourced sweep of what people complain about in pastebins.
 
 ## How it flows
 
@@ -57,7 +61,7 @@ A page view is two REST round trips (a peek pipeline, then one Lua script that r
 1. Create a Redis database at [console.upstash.com](https://console.upstash.com) (or add **Upstash for Redis** from the Vercel Marketplace, which sets the env vars for you).
 2. Import this repository in Vercel. Framework preset: Next.js. No build settings to change.
 3. Set environment variables: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` (or the Marketplace's `KV_REST_API_URL` / `KV_REST_API_TOKEN`). Optionally `NEXT_PUBLIC_SITE_URL`, `REPORT_WEBHOOK_URL`, `ADMIN_TOKEN`, `MAX_PASTE_BYTES`. See [`.env.example`](.env.example).
-4. Deploy. No cron jobs are needed: expiry is Redis TTL.
+4. Deploy. No cron jobs are needed: expiry is Redis TTL. Optional policy: `MAX_EXPIRY=30d` to disable "never".
 
 Any other host that runs Next.js works the same way (Docker, Node, Netlify).
 
@@ -81,18 +85,18 @@ Add a language: append to `src/lib/langs.ts`, then run `pnpm gen:grammars`.
 
 ## CLI
 
-Paste without opening the site. Lives in [`cli/`](cli/) and is published as `paster-cli`; every instance also serves a shell version.
+Paste without opening the site. Lives in [`cli/`](cli/) and is published as `pastly`; every instance also serves a shell version.
 
 ```sh
-npm install -g paster-cli && paster config host https://your-host     # Node 20+, supports -E encryption
+npm install -g pastly && pastly config host https://your-host     # Node 20+, supports -E encryption
 curl -fsSL https://your-host/install.sh | sh                          # POSIX sh + curl, host preconfigured
 
-ls -la | paster                 # stdin
-paster main.go -e 1d            # files
-paster clip -E -c               # clipboard → encrypted, link copied back
-paster text "hello" -b          # burn after read
-paster get URL#key              # print/decrypt
-paster ls / paster rm ID        # history and delete (edit tokens stay on your machine)
+ls -la | pastly                 # stdin
+pastly main.go -e 1d            # files
+pastly clip -E -c               # clipboard → encrypted, link copied back
+pastly text "hello" -b          # burn after read
+pastly get URL#key              # print/decrypt
+pastly ls / pastly rm ID        # history and delete (edit tokens stay on your machine)
 ```
 
 ## API
@@ -130,7 +134,7 @@ curl --data-binary @file https://your-host/documents
 
 ## Compared with pasty
 
-| | pasty | paster |
+| | pasty | pastly |
 | --- | --- | --- |
 | Expiry | one global lifetime, cron cleanup | per paste, exact TTL, plus burn-after-read |
 | Encryption | AES-CBC, key in fragment | AES-GCM (authenticated), key in fragment or password |

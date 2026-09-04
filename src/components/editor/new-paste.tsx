@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { Editor } from "./editor";
 
-const FORK_KEY = "paster:fork";
+const FORK_KEY = "pastly:fork";
 
 export function stashFork(data: { content: string; title?: string; lang?: string }) {
   try {
@@ -31,7 +31,7 @@ function readStash(): string | null {
  * Home page editor. The form is server-rendered so it works without JavaScript;
  * a "fork" handed over via sessionStorage remounts it with the forked content.
  */
-export function NewPaste({ maxBytes }: { maxBytes: number }) {
+export function NewPaste({ maxBytes, expiries, shared }: { maxBytes: number; expiries: readonly string[]; shared?: { content: string; title?: string } }) {
   const raw = useSyncExternalStore(
     () => () => {},
     readStash,
@@ -40,13 +40,13 @@ export function NewPaste({ maxBytes }: { maxBytes: number }) {
   useEffect(() => () => void (stash = undefined), []);
 
   const initial = useMemo(() => {
-    if (!raw) return undefined;
+    if (!raw) return shared;
     try {
       return JSON.parse(raw) as { content: string; title?: string; lang?: string };
     } catch {
-      return undefined;
+      return shared;
     }
-  }, [raw]);
+  }, [raw, shared]);
 
-  return <Editor key={initial ? "fork" : "new"} initial={initial} maxBytes={maxBytes} />;
+  return <Editor key={raw ? "fork" : shared ? "shared" : "new"} initial={initial} maxBytes={maxBytes} expiries={expiries} />;
 }

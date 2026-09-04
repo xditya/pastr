@@ -4,49 +4,53 @@
    Neutral, warm-gray palette with one restrained accent. Light is the default;
    `.dark` on <html> switches everything (set before paint by ThemeScript).
 ---------------------------------------------------------------------------- */
+/* Tokens adapted from engram (engram.xditya.me): three greys, one accent, hairlines instead of shadows. */
 :root {
-  --bg: #fafafa;
+  --bg: #f4f5f7;
   --surface: #ffffff;
-  --surface-2: #f4f4f4;
-  --border: #e5e5e5;
-  --border-strong: #d4d4d4;
-  --fg: #171717;
-  --fg-muted: #666666;
-  --fg-faint: #767676;
-  --accent: #2f6df6;
+  --surface-2: #eceef1;
+  --border: #dde0e5;
+  --border-strong: #c7ccd4;
+  --fg: #15171a;
+  --fg-muted: #5c6370;
+  --fg-faint: #666d75;
+  --accent: #2e4fd6;
   --accent-fg: #ffffff;
-  --danger: #dc2626;
-  --success: #16a34a;
+  --accent-soft: rgba(46, 79, 214, 0.1);
+  --danger: #c2352b;
+  --success: #1f8a4c;
   --warning: #b45309;
   --code-bg: #ffffff;
-  --gutter: #8a8a8a;
-  --line-hl: rgba(47, 109, 246, 0.08);
-  --selection: rgba(47, 109, 246, 0.18);
-  --ring: #2f6df6;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -12px rgba(0, 0, 0, 0.12);
+  --gutter: #666d75;
+  --line-hl: rgba(46, 79, 214, 0.1);
+  --selection: rgba(46, 79, 214, 0.18);
+  --ring: #2e4fd6;
+  --shadow: none;
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
   color-scheme: light;
 }
 
 .dark {
-  --bg: #0a0a0a;
-  --surface: #111111;
-  --surface-2: #171717;
-  --border: #262626;
-  --border-strong: #333333;
-  --fg: #ededed;
-  --fg-muted: #a3a3a3;
-  --fg-faint: #8a8a8a;
-  --accent: #5b8def;
-  --accent-fg: #0a0a0a;
-  --danger: #f87171;
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --code-bg: #0d1117;
-  --gutter: #6e6e6e;
-  --line-hl: rgba(91, 141, 239, 0.12);
-  --selection: rgba(91, 141, 239, 0.25);
-  --ring: #7aa2ff;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  --bg: #0f1114;
+  --surface: #171a1f;
+  --surface-2: #22262c;
+  --border: #272a30;
+  --border-strong: #363b44;
+  --fg: #edeff2;
+  --fg-muted: #a3a9b3;
+  --fg-faint: #828996;
+  --accent: #7b96ff;
+  --accent-fg: #0f1114;
+  --accent-soft: rgba(123, 150, 255, 0.14);
+  --danger: #e5574b;
+  --success: #4cc27a;
+  --warning: #e2a33b;
+  --code-bg: #12151a;
+  --gutter: #828996;
+  --line-hl: rgba(123, 150, 255, 0.14);
+  --selection: rgba(123, 150, 255, 0.28);
+  --ring: #7b96ff;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   color-scheme: dark;
 }
 
@@ -61,6 +65,7 @@
   --color-fg-faint: var(--fg-faint);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -68,9 +73,11 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
   --shadow-pop: var(--shadow);
+  --ease-quint: var(--ease);
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -132,10 +139,11 @@
 /* ---------- Code rendering -------------------------------------------------- */
 .code {
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 13.5px;
+  line-height: 1.6;
   tab-size: 4;
   font-variant-ligatures: none;
+  font-variant-numeric: tabular-nums;
 }
 
 /* shiki dual-theme: tokens carry --shiki-light / --shiki-dark variables. */
@@ -153,8 +161,8 @@
 /* Editor textarea shares metrics with the gutter so line numbers align. */
 .editor-textarea {
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 13.5px;
+  line-height: 1.6;
   tab-size: 4;
   white-space: pre;
   overflow: auto;
@@ -265,7 +273,7 @@
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -273,7 +281,7 @@
   }
 }
 .animate-fade-up {
-  animation: fade-up 160ms ease-out both;
+  animation: fade-up 240ms var(--ease) both;
 }
 
 @media (prefers-reduced-motion: reduce) {

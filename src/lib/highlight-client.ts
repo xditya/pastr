@@ -18,7 +18,7 @@ async function getHighlighter(): Promise<HighlighterCore> {
       import("shiki/core"),
       import("shiki/engine/javascript"),
       import("@shikijs/themes/github-light"),
-      import("@shikijs/themes/github-dark-default"),
+      import("@shikijs/themes/github-dark-dimmed"),
     ]);
     return createHighlighterCore({
       themes: [light.default, dark.default],
@@ -40,7 +40,7 @@ export async function highlightLinesClient(code: string, langId: string): Promis
     if (!hl.getLoadedLanguages().includes(shikiId)) await hl.loadLanguage((await loader()).default);
     const { tokens } = hl.codeToTokens(code, {
       lang: shikiId,
-      themes: { light: "github-light", dark: "github-dark-default" },
+      themes: { light: "github-light", dark: "github-dark-dimmed" },
       defaultColor: false,
     });
     return { lines: tokensToLines(tokens), highlighted: true };

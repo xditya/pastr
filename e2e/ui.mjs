@@ -61,7 +61,7 @@ check("range highlighted", (await page.locator("tr.line-hl").count()) === 3);
 await page.emulateMedia({ colorScheme: "dark" });
 await page.evaluate(() => { localStorage.setItem("theme", "dark"); document.documentElement.classList.add("dark"); });
 await page.screenshot({ path: `${OUT}/03-paste-dark.png` });
-check("dark tokens applied", await page.evaluate(() => getComputedStyle(document.body).backgroundColor === "rgb(10, 10, 10)"));
+check("dark tokens applied", await page.evaluate(() => getComputedStyle(document.body).backgroundColor === "rgb(15, 17, 20)"));
 await page.evaluate(() => { localStorage.setItem("theme", "light"); document.documentElement.classList.remove("dark"); });
 await page.emulateMedia({ colorScheme: "light" });
 

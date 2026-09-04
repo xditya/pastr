@@ -1,13 +1,30 @@
 {
-  "name": "paster-cli",
+  "name": "pastly",
   "version": "0.1.0",
-  "description": "Paste from the terminal to a paster instance: pipe, files, clipboard, with optional end-to-end encryption.",
+  "description": "Paste from the terminal to a pastly instance: pipe, files, clipboard, with optional end-to-end encryption.",
   "type": "module",
-  "bin": { "paster": "./paster.mjs" },
-  "files": ["paster.mjs", "README.md"],
-  "engines": { "node": ">=20" },
-  "keywords": ["pastebin", "paste", "cli", "clipboard", "encryption"],
+  "bin": {
+    "pastly": "./pastly.mjs"
+  },
+  "files": [
+    "pastly.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "pastebin",
+    "paste",
+    "cli",
+    "clipboard",
+    "encryption"
+  ],
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/xditya/paster", "directory": "cli" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xditya/paster",
+    "directory": "cli"
+  },
   "homepage": "https://github.com/xditya/paster#readme"
 }

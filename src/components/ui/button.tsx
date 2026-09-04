@@ -11,11 +11,11 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const base =
-  "inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-medium transition-[background-color,border-color,color,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-medium transition-[background-color,border-color,color,opacity,transform] duration-200 ease-quint active:scale-[.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100";
 
 const variants: Record<Variant, string> = {
-  primary: "border-fg bg-fg text-bg hover:opacity-90 active:opacity-80",
-  secondary: "border-border bg-surface text-fg hover:border-border-strong hover:bg-surface-2",
+  primary: "border-fg bg-fg text-bg hover:border-accent hover:bg-accent hover:text-accent-fg",
+  secondary: "border-border bg-surface text-fg hover:border-accent",
   ghost: "border-transparent bg-transparent text-fg-muted hover:bg-surface-2 hover:text-fg",
   danger: "border-transparent bg-transparent text-danger hover:bg-danger/10",
 };

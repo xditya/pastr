@@ -1,6 +1,6 @@
 import "server-only";
 import { after } from "next/server";
-import { LIMITS, env } from "./config";
+import { LIMITS, allowedExpiries, env } from "./config";
 import { byteLength } from "./bytes";
 import { expiresAt, expirySeconds, normalizeExpiry } from "./expiry";
 import { HttpError } from "./http";
@@ -47,6 +47,9 @@ export async function createPaste(raw: Record<string, unknown>): Promise<Created
   }
 
   const expiry = normalizeExpiry(input.expires);
+  if (!allowedExpiries().includes(expiry)) {
+    throw new HttpError(400, "invalid", `expiry "${expiry}" is not allowed here (max ${process.env.MAX_EXPIRY})`);
+  }
   const editToken = newEditToken();
   const now = Date.now();
   const store = getStore();

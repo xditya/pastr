@@ -2,12 +2,12 @@ import "server-only";
 import { createHighlighterCore, type HighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import githubLight from "@shikijs/themes/github-light";
-import githubDark from "@shikijs/themes/github-dark-default";
+import githubDark from "@shikijs/themes/github-dark-dimmed";
 import { getLang } from "./langs";
 import { GRAMMARS } from "./grammars";
 import { escapeHtml, tokensToLines } from "./highlight-shared";
 
-export const THEMES = { light: "github-light", dark: "github-dark-default" } as const;
+export const THEMES = { light: "github-light", dark: "github-dark-dimmed" } as const;
 
 /** Above this size the server skips highlighting to keep TTFB low; the page still renders. */
 export const HIGHLIGHT_MAX_BYTES = 200 * 1024;

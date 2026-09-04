@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * paster — paste from the terminal.
+ * pastly — paste from the terminal.
  *
- * Zero dependencies (Node ≥ 20). Talks to any paster instance over its HTTP API and
- * implements the same AES-256-GCM envelope as the website, so `paster -E` pastes are
+ * Zero dependencies (Node ≥ 20). Talks to any pastly instance over its HTTP API and
+ * implements the same AES-256-GCM envelope as the website, so `pastly -E` pastes are
  * end-to-end encrypted without ever opening a browser.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -15,7 +15,7 @@ import { parseArgs } from "node:util";
 import { createInterface } from "node:readline";
 
 export const VERSION = "0.1.0";
-const NAME = "paster";
+const NAME = "pastly";
 
 // ---------------------------------------------------------------------------
 // Config & history
@@ -69,7 +69,7 @@ function forget(id) {
 export function resolveHost(flag) {
   const host = flag || process.env.PASTER_HOST || getConfig().host;
   if (!host) {
-    throw new UsageError(`no host configured. Run \`${NAME} config host https://your-paster.example\` or set PASTER_HOST.`);
+    throw new UsageError(`no host configured. Run \`${NAME} config host https://your-pastly.example\` or set PASTER_HOST.`);
   }
   return host.replace(/\/+$/, "");
 }

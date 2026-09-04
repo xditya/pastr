@@ -17,6 +17,9 @@ export interface PasteStore {
   /** Global counters for the footer/stats. */
   incrStat(name: "created" | "views"): Promise<void>;
   stats(): Promise<{ created: number; views: number }>;
+  /** Operator view: most recent paste ids (newest first) and the most-reported ids. */
+  recent(limit: number): Promise<Array<{ id: string; created: number }>>;
+  mostReported(limit: number): Promise<Array<{ id: string; reports: number }>>;
   /** Cheap liveness check. */
   ping(): Promise<boolean>;
   readonly kind: "redis" | "memory";
@@ -27,4 +30,6 @@ export const KEY = {
   views: (id: string) => `v:${id}`,
   reports: (id: string) => `r:${id}`,
   stat: (name: string) => `s:${name}`,
+  recentIndex: "idx:recent",
+  reportsIndex: "idx:reports",
 };

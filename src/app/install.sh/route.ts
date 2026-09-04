@@ -10,18 +10,18 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   const origin = originFrom(req);
   const script = `#!/bin/sh
-# paster installer — puts the \`paster\` shell CLI in ~/.local/bin (override with PASTER_BIN_DIR).
+# pastly installer — puts the \`pastly\` shell CLI in ~/.local/bin (override with PASTER_BIN_DIR).
 set -eu
 DIR="\${PASTER_BIN_DIR:-$HOME/.local/bin}"
 mkdir -p "$DIR"
-curl -fsSL "${origin}/paster.sh" -o "$DIR/paster"
-chmod +x "$DIR/paster"
-echo "installed $DIR/paster (host: ${origin})"
+curl -fsSL "${origin}/pastly.sh" -o "$DIR/pastly"
+chmod +x "$DIR/pastly"
+echo "installed $DIR/pastly (host: ${origin})"
 case ":$PATH:" in
   *":$DIR:"*) ;;
   *) echo "add it to your PATH:  export PATH=\\"$DIR:\\$PATH\\"" ;;
 esac
-echo "try:  echo hello | paster"
+echo "try:  echo hello | pastly"
 `;
   return text(script, { headers: { "Cache-Control": "public, max-age=300", "Content-Type": "text/x-shellscript; charset=utf-8" } });
 }

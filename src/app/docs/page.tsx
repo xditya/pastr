@@ -48,18 +48,18 @@ export default async function DocsPage() {
           Paste without opening the site. The Node version supports end-to-end encryption; the shell version needs only <span className="font-mono">curl</span>.
         </p>
         <Code>{`# Node 20+ (npm) — full featured, incl. -E for encryption
-npm install -g paster-cli
-paster config host ${HOST}
+npm install -g pastly
+pastly config host ${HOST}
 
 # No Node? POSIX shell + curl, with this host preconfigured
 curl -fsSL ${HOST}/install.sh | sh`}</Code>
-        <Code>{`ls -la | paster                  # stdin
-paster main.go --expires 1d      # files (language from the extension)
-paster clip -E -c                # clipboard → encrypted paste, link copied back
-paster text "hello there" -b     # literal text, burn after read
-paster get ${HOST}/AbCd1234#key  # print (and decrypt) a paste
-paster ls                        # pastes made from this machine
-paster rm AbCd1234               # delete with the locally stored edit token`}</Code>
+        <Code>{`ls -la | pastly                  # stdin
+pastly main.go --expires 1d      # files (language from the extension)
+pastly clip -E -c                # clipboard → encrypted paste, link copied back
+pastly text "hello there" -b     # literal text, burn after read
+pastly get ${HOST}/AbCd1234#key  # print (and decrypt) a paste
+pastly ls                        # pastes made from this machine
+pastly rm AbCd1234               # delete with the locally stored edit token`}</Code>
 
         <H2 id="quick">Plain curl</H2>
         <Code>{`# Pipe anything in and get a link back
@@ -142,6 +142,37 @@ GET  /raw/:key             → text/plain`}</Code>
             Errors are <span className="font-mono">{'{ "error": { "code", "message" } }'}</span> with the matching HTTP status (400 invalid, 401/403 token problems, 404 missing or expired, 413 too large, 429 rate limited).
           </li>
           <li>Paste pages are never indexed by search engines. Expiry is enforced by the database, not a cron job, so it is exact.</li>
+        </ul>
+
+        <H2 id="admin">Operator API</H2>
+        <Code>{`# Set ADMIN_TOKEN in the environment, then:
+curl -H 'Authorization: Bearer $ADMIN_TOKEN' '${HOST}/api/v1/admin/pastes?limit=50'          # newest first
+curl -H 'Authorization: Bearer $ADMIN_TOKEN' '${HOST}/api/v1/admin/pastes?sort=reports'      # most reported
+curl -X DELETE -H 'Authorization: Bearer $ADMIN_TOKEN' ${HOST}/api/v1/pastes/AbCd1234        # remove anything`}</Code>
+        <p className="mt-3 text-[13px] text-fg-muted">
+          Listings never include content. Reports are kept for 30 days with a salted hash of the reporter, and optionally forwarded to <span className="font-mono">REPORT_WEBHOOK_URL</span>. Set <span className="font-mono">MAX_EXPIRY</span> (for example <span className="font-mono">30d</span>) to cap how long pastes may live.
+        </p>
+
+        <H2 id="security">Security model</H2>
+        <ul className="list-disc space-y-1.5 pl-5 text-[13px] text-fg-muted">
+          <li>
+            <strong className="text-fg">Plain pastes</strong> are readable by anyone with the link (and by the operator). Links are unguessable 8-character ids from a 55-symbol alphabet, never indexed, and expire exactly when you said.
+          </li>
+          <li>
+            <strong className="text-fg">Encrypted pastes</strong> are sealed in your browser with AES-256-GCM before upload. In link mode the key lives after <span className="font-mono">#</span>, which browsers never send to servers; in password mode it is derived with PBKDF2-SHA256 (600,000 iterations). The server stores ciphertext, an IV and a salt, and learns only the size. This protects against a database leak or a curious operator. It does <em>not</em> protect against someone who has the full link, a compromised browser or extension, or a malicious copy of this site&apos;s JavaScript — check the source or self-host if that matters to you.
+          </li>
+          <li>
+            <strong className="text-fg">Burn after read</strong> deletes the paste in the same atomic step that reads it, so two readers can never both see it. Link previewers only ever see the confirmation page; <span className="font-mono">HEAD</span> requests are side-effect free.
+          </li>
+          <li>
+            <strong className="text-fg">Edit tokens</strong> are 256-bit random values shown once; only a SHA-256 hash is stored. Your browser keeps them (and link keys) in <span className="font-mono">localStorage</span> for the &ldquo;Your pastes&rdquo; list — export that list if you clear site data.
+          </li>
+          <li>
+            <strong className="text-fg">What the server keeps</strong>: the paste, its metadata (language, size, timestamps, view count), rate-limit counters keyed by IP for a few minutes, and hashed reporter ids on abuse reports. No analytics, no third-party scripts, no SDK telemetry, <span className="font-mono">Referrer-Policy: no-referrer</span>, a nonce-based CSP.
+          </li>
+          <li>
+            <strong className="text-fg">Before you paste a secret</strong>: the editor warns when text looks like a key or password. Prefer encrypt + burn, or better, don&apos;t paste it at all.
+          </li>
         </ul>
 
         <H2 id="info">Capabilities</H2>

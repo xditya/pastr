@@ -26,8 +26,8 @@ export type Prefs = {
   encryptByDefault: boolean;
 };
 
-const PASTES_KEY = "paster:pastes";
-const PREFS_KEY = "paster:prefs";
+const PASTES_KEY = "pastly:pastes";
+const PREFS_KEY = "pastly:prefs";
 const MAX_LOCAL = 200;
 
 function read<T>(key: string, fallback: T): T {
@@ -43,7 +43,7 @@ function read<T>(key: string, fallback: T): T {
 function write(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-    window.dispatchEvent(new Event("paster:local"));
+    window.dispatchEvent(new Event("pastly:local"));
   } catch {
     /* quota / private mode */
   }
@@ -76,6 +76,26 @@ export function updateLocalPaste(id: string, patch: Partial<LocalPaste>) {
   write(PASTES_KEY, list);
 }
 
+/** JSON export of everything this browser remembers (ids, edit tokens, link keys). */
+export function exportLocal(): string {
+  return JSON.stringify({ app: "pastly", version: 1, exportedAt: new Date().toISOString(), pastes: getLocalPastes() }, null, 2);
+}
+
+/** Merge an export back in; returns how many entries were added or updated. Throws on invalid input. */
+export function importLocal(json: string): number {
+  const data = JSON.parse(json) as { app?: string; pastes?: unknown };
+  if (data?.app !== "pastly" || !Array.isArray(data.pastes)) throw new Error("not a pastly export");
+  const existing = new Map(getLocalPastes().map((p) => [p.id, p]));
+  let n = 0;
+  for (const item of data.pastes as Array<Partial<LocalPaste>>) {
+    if (!item || typeof item.id !== "string" || !/^[A-Za-z0-9]{4,32}$/.test(item.id)) continue;
+    existing.set(item.id, { ...existing.get(item.id), ...item, lang: item.lang ?? "text", created: item.created ?? Date.now(), expires: item.expires ?? null, burn: !!item.burn, encrypted: !!item.encrypted } as LocalPaste);
+    n++;
+  }
+  write(PASTES_KEY, [...existing.values()].sort((a, b) => b.created - a.created).slice(0, MAX_LOCAL));
+  return n;
+}
+
 export const DEFAULT_PREFS: Prefs = { expiry: "7d", lang: "auto", wrap: false, encryptByDefault: false };
 
 export function getPrefs(): Prefs {
@@ -89,10 +109,10 @@ export function setPrefs(patch: Partial<Prefs>) {
 /** Subscribe to changes made by this tab or others. */
 export function onLocalChange(cb: () => void): () => void {
   if (typeof window === "undefined") return () => {};
-  window.addEventListener("paster:local", cb);
+  window.addEventListener("pastly:local", cb);
   window.addEventListener("storage", cb);
   return () => {
-    window.removeEventListener("paster:local", cb);
+    window.removeEventListener("pastly:local", cb);
     window.removeEventListener("storage", cb);
   };
 }

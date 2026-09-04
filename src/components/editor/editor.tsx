@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
-import { Flame, Lock, Save, Upload } from "lucide-react";
+import { ClipboardPaste, Flame, Lock, Save, ShieldAlert, Upload } from "lucide-react";
+import { findSecrets } from "@/lib/secrets";
 import { DEFAULT_EXPIRY, EXPIRIES, LIMITS } from "@/lib/config";
 import { byteLength, formatBytes } from "@/lib/bytes";
 import { detectLang } from "@/lib/detect";
@@ -44,13 +45,16 @@ export type EditorProps = {
   initial?: { content: string; title?: string; lang?: string };
   /** Server-side content limit in bytes (the client bundle can't read MAX_PASTE_BYTES). */
   maxBytes?: number;
+  /** Expiry ids the server allows (MAX_EXPIRY policy). */
+  expiries?: readonly string[];
   onCancel?: () => void;
   onSaved?: (saved: SavedPaste) => void;
   /** Called when the server rejects the edit token (401/403). */
   onAuthError?: () => void;
 };
 
-export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, onSaved, onAuthError }: EditorProps) {
+export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, onCancel, onSaved, onAuthError }: EditorProps) {
+  const allowedExpiries = useMemo(() => EXPIRIES.filter((e) => !expiries || expiries.includes(e.id)), [expiries]);
   const router = useRouter();
   const { push } = useToast();
   // Saved preferences only apply after hydration so the server-rendered form matches the first client render.
@@ -61,7 +65,9 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, on
   const [title, setTitle] = useState(edit?.title ?? initial?.title ?? "");
   const [lang, setLang] = useState<string>(edit?.lang ?? initial?.lang ?? "auto");
   const [expiryChoice, setExpiry] = useState<string | null>(null);
-  const expiry = expiryChoice ?? (mounted ? prefs.expiry : DEFAULT_EXPIRY);
+  const fallbackExpiry = allowedExpiries.some((e) => e.id === DEFAULT_EXPIRY) ? DEFAULT_EXPIRY : (allowedExpiries[allowedExpiries.length - 1]?.id ?? DEFAULT_EXPIRY);
+  const preferredExpiry = allowedExpiries.some((e) => e.id === prefs.expiry) ? prefs.expiry : fallbackExpiry;
+  const expiry = expiryChoice ?? (mounted ? preferredExpiry : fallbackExpiry);
   const [burn, setBurn] = useState(false);
   const [encryptChoice, setEncrypt] = useState<boolean | null>(edit ? !!edit.enc : null);
   const encrypt = encryptChoice ?? (mounted ? prefs.encryptByDefault : false);
@@ -90,6 +96,8 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, on
     [encrypt, title, detected, content, bytes],
   );
   const tooLarge = effectiveBytes > maxBytes;
+  /** Heuristic scan for credentials so people don't publish keys by accident (never sent anywhere). */
+  const secrets = useMemo(() => (edit?.enc || encrypt ? [] : findSecrets(content)), [content, encrypt, edit?.enc]);
   const canSave = content.trim().length > 0 && !tooLarge && !saving && (!encrypt || !usePassword || password.length > 0);
   const dirty = content !== (edit?.content ?? initial?.content ?? "") || title !== (edit?.title ?? initial?.title ?? "");
 
@@ -165,6 +173,17 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, on
     setDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file) void loadFile(file);
+  };
+
+  const pasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) return push("info", "Clipboard is empty");
+      setContent((c) => (c ? `${c}\n${text}` : text));
+      textareaRef.current?.focus();
+    } catch {
+      push("error", "Clipboard access was denied — paste with the keyboard instead");
+    }
   };
 
   const onFileInput = (e: ChangeEvent<HTMLInputElement>) => {
@@ -303,8 +322,9 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, on
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
+      <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
       {/* Options bar */}
-      <div className="flex flex-wrap items-center gap-2 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2.5">
         <input
           name="title"
           value={title}
@@ -336,7 +356,7 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, on
         </Select>
         {!edit && (
           <Select name="expires" value={expiry} onChange={(e) => setExpiry(e.target.value)} aria-label="Expiry" className="w-44">
-            {EXPIRIES.map((e) => (
+            {allowedExpiries.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.id === "never" ? "Never expires" : `Expires in ${e.label}`}
               </option>
@@ -386,7 +406,11 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, on
               Cancel
             </Button>
           )}
-          <Button type="button" variant="ghost" onClick={() => fileRef.current?.click()} title="Open a text file">
+          <Button type="button" variant="ghost" onClick={pasteFromClipboard} title="Paste from clipboard" aria-label="Paste from clipboard">
+            <ClipboardPaste className="size-3.5" aria-hidden />
+            <span className="sr-only sm:not-sr-only">Clipboard</span>
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => fileRef.current?.click()} title="Open a text file" aria-label="Open a text file">
             <Upload className="size-3.5" aria-hidden />
             <span className="sr-only sm:not-sr-only">File</span>
           </Button>
@@ -399,11 +423,20 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, on
         </div>
       </div>
 
+      {secrets.length > 0 && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-border bg-accent-soft px-3 py-2 text-[12.5px] text-fg">
+          <ShieldAlert className="size-3.5 shrink-0 text-danger" aria-hidden />
+          <span>
+            This looks like it contains {secrets.join(", ")}. Anyone with the link can read a plain paste — consider turning on <strong>Encrypt</strong> and <strong>Burn after read</strong>, or remove the secret first.
+          </span>
+        </div>
+      )}
+
       {/* Editor surface */}
       <div
         className={cn(
-          "relative flex min-h-[60vh] flex-1 overflow-hidden rounded-lg border bg-code-bg transition-colors",
-          dragging ? "border-accent" : "border-border",
+          "relative flex min-h-[60vh] flex-1 overflow-hidden bg-code-bg transition-colors",
+          dragging && "ring-2 ring-inset ring-accent",
         )}
       >
         <div ref={gutterRef} aria-hidden className="code select-none overflow-hidden border-r border-border bg-surface-2/60 py-3 text-right text-[var(--gutter)]">
@@ -432,9 +465,9 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, on
       </div>
 
       {/* Status bar */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-[12px] text-fg-faint">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-3 py-2 font-mono text-[12px] text-fg-faint">
         <span className={cn(tooLarge && "text-danger")}>
-          {lines} {lines === 1 ? "line" : "lines"} · {content.length.toLocaleString("en-US")} chars · {formatBytes(bytes)}
+          {lines} {lines === 1 ? "line" : "lines"} · {content.length.toLocaleString("en-US")} chars · {formatBytes(bytes)} of {formatBytes(maxBytes)}
           {encrypt && ` (≈${formatBytes(effectiveBytes)} encrypted)`}
           {tooLarge && ` — over the ${formatBytes(maxBytes)} limit`}
         </span>
@@ -457,6 +490,7 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, on
           <Kbd>Tab</Kbd> indents · <Kbd>Esc</Kbd> then <Kbd>Tab</Kbd> leaves · <Kbd>{mac ? "⌘" : "Ctrl"}</Kbd>
           <Kbd>↵</Kbd> saves
         </span>
+      </div>
       </div>
     </form>
   );

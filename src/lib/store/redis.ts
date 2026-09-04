@@ -27,6 +27,8 @@ return {v, n}
 `;
 
 const REPORTS_TTL = 60 * 60 * 24 * 30;
+/** How many ids the operator index keeps; older entries fall off. */
+const RECENT_INDEX_SIZE = 2000;
 
 function parseRecord(raw: unknown): PasteRecord | null {
   if (raw === null || raw === undefined) return null;
@@ -45,7 +47,8 @@ export class RedisStore implements PasteStore {
   constructor(private redis: Redis) {}
 
   static fromEnv(url: string, token: string): RedisStore {
-    return new RedisStore(new Redis({ url, token }));
+    // No SDK telemetry: the site promises no tracking, and that includes its dependencies.
+    return new RedisStore(new Redis({ url, token, enableTelemetry: false }));
   }
 
   async create(record: PasteRecord, ttlSeconds: number | null): Promise<boolean> {
@@ -54,7 +57,13 @@ export class RedisStore implements PasteStore {
       ttlSeconds === null
         ? await this.redis.set(key, record, { nx: true })
         : await this.redis.set(key, record, { nx: true, ex: ttlSeconds });
-    return res === "OK";
+    if (res !== "OK") return false;
+    // Operator index (best effort): newest first, bounded size.
+    const p = this.redis.pipeline();
+    p.zadd(KEY.recentIndex, { score: record.created, member: record.id });
+    p.zremrangebyrank(KEY.recentIndex, 0, -RECENT_INDEX_SIZE - 1);
+    await p.exec().catch((err) => console.warn("[store] recent index update failed", err));
+    return true;
   }
 
   async read(id: string): Promise<ReadResult> {
@@ -88,7 +97,9 @@ export class RedisStore implements PasteStore {
     const p = this.redis.pipeline();
     p.del(KEY.paste(id));
     p.del(KEY.views(id), KEY.reports(id));
-    const [deleted] = await p.exec<[number, number]>();
+    p.zrem(KEY.recentIndex, id);
+    p.zrem(KEY.reportsIndex, id);
+    const [deleted] = await p.exec<[number, number, number, number]>();
     return Number(deleted) > 0;
   }
 
@@ -97,7 +108,8 @@ export class RedisStore implements PasteStore {
     const p = this.redis.pipeline();
     p.rpush(key, JSON.stringify({ reason, reporter, at: Date.now() }));
     p.expire(key, REPORTS_TTL);
-    const [n] = await p.exec<[number, number]>();
+    p.zincrby(KEY.reportsIndex, 1, id);
+    const [n] = await p.exec<[number, number, number]>();
     return Number(n) || 0;
   }
 
@@ -108,6 +120,20 @@ export class RedisStore implements PasteStore {
   async stats() {
     const [created, views] = await this.redis.mget<[number | null, number | null]>(KEY.stat("created"), KEY.stat("views"));
     return { created: Number(created) || 0, views: Number(views) || 0 };
+  }
+
+  async recent(limit: number) {
+    const rows = await this.redis.zrange<string[]>(KEY.recentIndex, 0, limit - 1, { rev: true, withScores: true });
+    const out: Array<{ id: string; created: number }> = [];
+    for (let i = 0; i + 1 < rows.length; i += 2) out.push({ id: String(rows[i]), created: Number(rows[i + 1]) });
+    return out;
+  }
+
+  async mostReported(limit: number) {
+    const rows = await this.redis.zrange<string[]>(KEY.reportsIndex, 0, limit - 1, { rev: true, withScores: true });
+    const out: Array<{ id: string; reports: number }> = [];
+    for (let i = 0; i + 1 < rows.length; i += 2) out.push({ id: String(rows[i]), reports: Number(rows[i + 1]) });
+    return out;
   }
 
   async ping(): Promise<boolean> {

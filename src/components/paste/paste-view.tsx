@@ -281,6 +281,21 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
   const rawUrl = `${origin}/${paste.id}/raw`;
   const title = revealed?.title ?? paste.title;
 
+  /** Mobile: the system share sheet; elsewhere: our dialog with QR and embed. */
+  const shareNative = useCallback(async () => {
+    const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void>; canShare?: (d: ShareData) => boolean };
+    const data = { title: title || `${paste.id}`, url };
+    if (nav.share && (!nav.canShare || nav.canShare(data)) && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      try {
+        await nav.share(data);
+        return;
+      } catch {
+        /* cancelled — fall through to the dialog */
+      }
+    }
+    setShare(true);
+  }, [title, paste.id, url]);
+
   // ---------- edit mode ----------
   if (editing && revealed) {
     const target: EditTarget = {
@@ -373,7 +388,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
               </Button>
             )}
             {!burned && (
-              <Button onClick={() => setShare(true)} title="Share" aria-label="Share">
+              <Button onClick={() => void shareNative()} title="Share" aria-label="Share">
                 <Share2 className="size-3.5" /> <span className="sr-only sm:not-sr-only">Share</span>
               </Button>
             )}

@@ -38,12 +38,12 @@ function getLimiter(bucket: Bucket): Limiter {
   const cfg = RATE_LIMITS[bucket];
   let limiter: Limiter;
   if (env.redisUrl && env.redisToken) {
-    redis ??= new Redis({ url: env.redisUrl, token: env.redisToken });
+    redis ??= new Redis({ url: env.redisUrl, token: env.redisToken, enableTelemetry: false });
     limiter = new Ratelimit({
       redis,
       limiter: Ratelimit.slidingWindow(cfg.limit, cfg.window as Duration),
       prefix: `rl:${bucket}`,
-      analytics: false,
+      analytics: false, // telemetry is disabled on the Redis client above
     });
   } else {
     limiter = new MemoryLimiter(cfg.limit, durationMs(cfg.window));
