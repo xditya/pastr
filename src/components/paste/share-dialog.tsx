@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import QRCode from "qrcode";
 import { Dialog } from "@/components/ui/dialog";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 
-export function ShareDialog({ open, onClose, url, rawUrl, encrypted }: { open: boolean; onClose: () => void; url: string; rawUrl: string; encrypted: boolean }) {
+export function ShareDialog({ open, onClose, url, rawUrl, encrypted }: { open: boolean; onClose: () => void; url: string; rawUrl?: string; encrypted: boolean }) {
   const [qr, setQr] = useState<string>("");
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -18,7 +19,7 @@ export function ShareDialog({ open, onClose, url, rawUrl, encrypted }: { open: b
   }, [open, url]);
 
   const copy = async (text: string, key: string) => {
-    await navigator.clipboard.writeText(text);
+    if (!(await copyToClipboard(text))) return;
     setCopied(key);
     setTimeout(() => setCopied(null), 1500);
   };
@@ -34,8 +35,8 @@ export function ShareDialog({ open, onClose, url, rawUrl, encrypted }: { open: b
             The part after <span className="font-mono">#</span> is the decryption key. It never reaches the server, so share the full link.
           </p>
         )}
-        {!encrypted && <Row label="Raw" value={rawUrl} copied={copied === "raw"} onCopy={() => copy(rawUrl, "raw")} />}
-        {!encrypted && <Row label="Embed" value={embed} copied={copied === "embed"} onCopy={() => copy(embed, "embed")} mono />}
+        {!encrypted && rawUrl && <Row label="Raw" value={rawUrl} copied={copied === "raw"} onCopy={() => copy(rawUrl, "raw")} />}
+        {!encrypted && rawUrl && <Row label="Embed" value={embed} copied={copied === "embed"} onCopy={() => copy(embed, "embed")} mono />}
         {qr && (
           <div className="flex items-center gap-4 rounded-lg border border-border bg-white p-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}

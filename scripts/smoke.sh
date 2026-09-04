@@ -24,7 +24,7 @@ check "$(curl -s $BASE/api/v1/pastes/$ID | py 'str(d["views"])+"|"+d["lang"]')" 
 check "$(curl -s $BASE/api/v1/pastes/$ID | py 'str(d["views"])')" "2" "second read"
 check "$(curl -s $BASE/$ID/raw)" "package main
 func main(){}" "raw body"
-check "$(curl -si "$BASE/$ID.go/raw?dl=1" | grep -i content-disposition | tr -d '\r' | tr 'A-Z' 'a-z')" 'content-disposition: attachment; filename="main.go"' "raw download filename"
+check "$(curl -si "$BASE/$ID.go/raw?dl=1" | grep -i content-disposition | tr -d '\r' | tr 'A-Z' 'a-z')" "content-disposition: attachment; filename=\"main.go\"; filename*=utf-8''main.go" "raw download filename"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH -H "$J" -d '{"title":"x"}' $BASE/api/v1/pastes/$ID)" "401" "patch without token"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH -H "authorization: Bearer nope" -H "$J" -d '{"title":"x"}' $BASE/api/v1/pastes/$ID)" "403" "patch bad token"
 check "$(curl -s -X PATCH -H "authorization: Bearer $TOK" -H "$J" -d '{"title":"renamed.go","content":"package x"}' $BASE/api/v1/pastes/$ID | py 'd["title"]+"|"+d["content"]+"|"+str(d["views"])')" "renamed.go|package x|4" "patch ok keeps views (raw reads count too)"
@@ -52,9 +52,31 @@ check "$(curl -s -H "$A" -H "$J" -d '{"content":"x","enc":{"alg":"AES-CBC"}}' $B
 check "$(curl -s -H "$A" -H "$J" -d '[1,2]' $BASE/api/v1/pastes | py 'd["error"]["code"]')" "bad_request" "json array body"
 check "$(curl -s -o /dev/null -w '%{http_code}' $BASE/api/v1/pastes/zzzzzzzz)" "404" "unknown id"
 check "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/v1/pastes/..%2f..")" "404" "weird id"
-check "$(curl -s $BASE/nope1234/raw)" "error: this paste doesn't exist, expired, or was burned" "raw 404 text"
+check "$(curl -s $BASE/nope1234/raw)" "error: this paste doesn't exist, expired, or was burned (not_found)" "raw 404 text"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS $BASE/api/v1/pastes)" "204" "cors preflight"
 check "$(curl -s $BASE/api/v1/info | py 'd["name"]+"|"+d["storage"]+"|"+str(len(d["languages"])>50)')" "paster|memory|True" "info"
+
+# ---- review regressions ----
+H=$(curl -s -H "$A" -H "$J" -d '{"content":"head me","burn":true}' $BASE/api/v1/pastes | py 'd["id"]')
+check "$(curl -s -o /dev/null -w '%{http_code}' -I $BASE/$H/raw)" "200" "HEAD raw exists"
+check "$(curl -s -o /dev/null -w '%{http_code}' -I $BASE/api/v1/pastes/$H)" "200" "HEAD api exists"
+check "$(curl -s -o /dev/null -w '%{http_code}' -I $BASE/documents/$H)" "200" "HEAD documents exists"
+check "$(curl -s $BASE/api/v1/pastes/$H | py 'd["content"]')" "head me" "HEAD did not burn"
+check "$(curl -s -o /dev/null -w '%{http_code}' -I $BASE/api/v1/pastes/$H)" "404" "HEAD after burn is 404"
+T=$(curl -s -H "$A" -H "$J" -d '{"content":"t","title":"has-title"}' $BASE/api/v1/pastes); TID=$(echo "$T" | py 'd["id"]'); TT=$(echo "$T" | py 'd["editToken"]')
+check "$(curl -s -X PATCH -H "authorization: Bearer $TT" -H "$J" -d '{"title":""}' $BASE/api/v1/pastes/$TID | py 'str(d.get("title"))')" "None" "PATCH clears title"
+check "$(curl -s -H "$A" $BASE/api/v1/pastes/$TID.txt | py 'd["id"]')" "$TID" "API accepts .lang suffix"
+check "$(head -c 1600000 /dev/zero | tr '\0' 'a' | curl -s -o /dev/null -w '%{http_code}' -H "$A" -H 'content-type: text/plain' --data-binary @- $BASE/api/v1/pastes)" "413" "1.5 MiB → 413"
+check "$(curl -s -H "$A" -H "$J" -d '{"content":"x","burn":"maybe"}' $BASE/api/v1/pastes | py 'd["error"]["code"]')" "invalid" "unknown burn value rejected"
+check "$(curl -s -H "$A" --data-binary 'x' "$BASE/api/v1/pastes?burn" | py 'str(d["burn"])')" "True" "bare ?burn means true"
+FB=$(printf 'data=a+b%%41\nline2' | curl -s -H "$A" --data-binary @- $BASE/api/v1/pastes | py 'd["content"]'); check "$FB" "data=a+b%41
+line2" "multi-line body is not url-decoded"
+check "$(curl -s -H "$A" -F 'file=@/tmp/smoke_t.py' $BASE/api/v1/pastes | py 'd["lang"]+"|"+d["title"]')" "python|smoke_t.py" "multipart file= alias"
+check "$(printf 'x' | curl -s -H "$A" -F 'content=@-' $BASE/api/v1/pastes | py 'str(d.get("title"))')" "None" "stdin multipart has no '-' title"
+check "$(curl -s -H "$A" -H "$J" -d '{"content":"q"}' "$BASE/api/v1/pastes?expires=10m" | py 'str(d["expires"] - d["created"])')" "600000" "query options apply to JSON bodies"
+check "$(curl -s -H "$A" --data-binary 'p' "$BASE/api/v1/pastes?name=/home/me/src/main.go" | py 'd["title"]+"|"+d["lang"]')" "main.go|go" "name= is basenamed"
+UF=$(curl -s -H "$A" -H "$J" -d '{"content":"ü","title":"résumé.md"}' $BASE/api/v1/pastes | py 'd["id"]'); check "$(curl -si "$BASE/$UF/raw?dl=1" | grep -i content-disposition | tr -d '\r' | grep -c "filename\*=UTF-8''r%C3%A9sum%C3%A9.md")" "1" "utf-8 download filename"
+check "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH -H 'content-type: application/json' -d '{}' -H 'user-agent: curl/8' $BASE/api/v1/pastes/$TID)" "401" "text-mode error status"
 
 # ---- CLI (Node) against the same server ----
 export PASTER_CONFIG_DIR=$(mktemp -d)
@@ -81,6 +103,8 @@ check "$(grep -c "HOST=\"\${PASTER_HOST:-$BASE}\"" "$SH")" "1" "paster.sh has ho
 U6=$(printf 'from sh\n' | sh "$SH"); check "$(curl -s "$U6/raw")" "from sh" "sh stdin"
 U7=$(sh "$SH" /tmp/smoke_cli.go -e 10m); check "$(echo "$U7" | grep -c '\.go$')" "1" "sh file → lang suffix"
 check "$(sh "$SH" get "$U6")" "from sh" "sh get"
+check "$(sh "$SH" get "$U6/raw")" "from sh" "sh get /raw url"
+cp /tmp/smoke_cli.go "/tmp/my notes.go"; check "$(sh "$SH" /tmp/smoke_cli.go "/tmp/my notes.go" | grep -c '\.go$')" "2" "sh two files with a space"
 check "$(sh "$SH" text hi there -b | grep -c "^$BASE/")" "1" "sh text"
 check "$(curl -s "$BASE/install.sh" | grep -c "curl -fsSL \"$BASE/paster.sh\"")" "1" "install.sh points at this host"
 rm -rf "$PASTER_CONFIG_DIR" "$SH"

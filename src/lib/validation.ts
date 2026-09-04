@@ -9,11 +9,15 @@ const expiryIds = EXPIRIES.map((e) => e.id) as [string, ...string[]];
 export const looseBoolean = z
   .union([z.boolean(), z.string(), z.number()])
   .optional()
-  .transform((v) => {
+  .transform((v, ctx) => {
     if (typeof v === "boolean") return v;
     if (typeof v === "number") return v !== 0;
     if (v === undefined) return false;
-    return ["true", "1", "yes", "on"].includes(v.trim().toLowerCase());
+    const s = v.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(s)) return true;
+    if (["false", "0", "no", "off", ""].includes(s)) return false;
+    ctx.addIssue({ code: "custom", message: "expected true or false" });
+    return false;
   });
 
 const base64url = z.string().regex(/^[A-Za-z0-9_-]+$/, "must be base64url");
@@ -49,10 +53,19 @@ export const createPasteSchema = z.object({
 });
 export type CreatePasteInput = z.infer<typeof createPasteSchema>;
 
+/** On update an empty string (or null) clears the title. */
+const updateTitleSchema = z
+  .string()
+  .trim()
+  .max(LIMITS.maxTitle, `title exceeds ${LIMITS.maxTitle} characters`)
+  .nullable()
+  .optional()
+  .transform((t) => (t === null ? "" : t));
+
 export const updatePasteSchema = z
   .object({
     content: contentSchema.optional(),
-    title: titleSchema,
+    title: updateTitleSchema,
     lang: z.unknown().optional().transform((v) => (v === undefined ? undefined : normalizeLang(v))),
     enc: encryptionSchema.optional(),
   })

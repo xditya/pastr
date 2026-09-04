@@ -1,13 +1,23 @@
 import type { NextRequest } from "next/server";
-import { clientIp, errorResponse, text } from "@/lib/http";
+import { clientIp, errorResponse, headFromPeek, text } from "@/lib/http";
 import { extensionFor, splitIdAndLang } from "@/lib/langs";
 import { enforceRateLimit } from "@/lib/ratelimit";
 import { readPaste } from "@/lib/service";
 
 export const runtime = "nodejs";
 
-function safeFilename(name: string): string {
+/** HEAD never counts a view or burns: it only reports whether the paste exists. */
+export async function HEAD(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return headFromPeek(splitIdAndLang((await params).id).id, { "Content-Type": "text/plain; charset=utf-8" });
+}
+
+/** ASCII fallback for the legacy `filename=` form. */
+function asciiFilename(name: string): string {
   return name.replace(/[^\w.\-]+/g, "_").slice(0, 100) || "paste";
+}
+/** Full UTF-8 name for `filename*=` (RFC 5987); only path separators, quotes and control chars are stripped. */
+function utf8Filename(name: string): string {
+  return name.replace(/[\\/"\u0000-\u001f]+/g, "_").slice(0, 150) || "paste";
 }
 
 /**
@@ -22,12 +32,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const paste = await readPaste(id);
     const url = new URL(req.url);
     const download = url.searchParams.has("dl") || url.searchParams.has("download");
-    const filename = paste.title
-      ? safeFilename(paste.title.includes(".") ? paste.title : `${paste.title}.${extensionFor(paste.lang)}`)
+    const name = paste.title
+      ? paste.title.includes(".")
+        ? paste.title
+        : `${paste.title}.${extensionFor(paste.lang)}`
       : `${paste.id}.${paste.enc ? "enc.txt" : extensionFor(paste.lang)}`;
+    const disposition = download ? "attachment" : "inline";
     return text(paste.content, {
       headers: {
-        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${filename}"`,
+        "Content-Disposition": `${disposition}; filename="${asciiFilename(name)}"; filename*=UTF-8''${encodeURIComponent(utf8Filename(name))}`,
         "X-Content-Type-Options": "nosniff",
         "X-Robots-Tag": "noindex",
         ...(paste.enc ? { "X-Encrypted": "1", "X-Encryption-Meta": JSON.stringify(paste.enc) } : {}),

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { clientIp, errorResponse, json, options, readBody } from "@/lib/http";
 import { enforceRateLimit } from "@/lib/ratelimit";
 import { reportPaste } from "@/lib/service";
+import { splitIdAndLang } from "@/lib/langs";
 
 export const runtime = "nodejs";
 
@@ -12,7 +13,7 @@ export async function OPTIONS() {
 /** Report abusive content. Stored in Redis and optionally forwarded to REPORT_WEBHOOK_URL. */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await params;
+    const { id } = splitIdAndLang((await params).id);
     const ip = clientIp(req);
     await enforceRateLimit("report", ip);
     const body = await readBody(req, 8 * 1024);

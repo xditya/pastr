@@ -88,7 +88,7 @@ case "$CMD" in
   get)
     ref=$(printf '%s' "$ARGS" | sed -n 2p); [ -n "$ref" ] || die "usage: get <id|url>"
     case "$ref" in
-      http*) id=$(printf '%s' "$ref" | sed 's#.*/##; s/[.#].*//') ; base=$(printf '%s' "$ref" | sed 's#\(https\{0,1\}://[^/]*\).*#\1#') ;;
+      http*) id=$(printf '%s' "$ref" | sed 's#^https\{0,1\}://[^/]*/##; s#/.*##; s/[.#].*//') ; base=$(printf '%s' "$ref" | sed 's#\(https\{0,1\}://[^/]*\).*#\1#') ;;
       *) id="$ref"; base="$HOST" ;;
     esac
     curl -sS -f "$base/$id/raw" || die "not found" ;;
@@ -98,8 +98,10 @@ case "$CMD" in
     curl -sS -f -X DELETE -H "Authorization: Bearer $tok" "$HOST/api/v1/pastes/$id" && echo "deleted $id" ;;
   "") post "" ;;
   *)
-    for f in "$CMD" $(printf '%s' "$ARGS" | sed '1d'); do
-      [ -f "$f" ] || die "no such file: $f"
+    # One file per line (names with spaces are fine).
+    { printf '%s\n' "$CMD"; printf '%s\n' "$ARGS" | sed '1d'; } | while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      [ -f "$f" ] || { printf 'paster: no such file: %s\n' "$f" >&2; exit 1; }
       post "$(basename "$f")" < "$f"
     done ;;
 esac

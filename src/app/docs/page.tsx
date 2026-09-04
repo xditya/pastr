@@ -63,19 +63,17 @@ paster rm AbCd1234               # delete with the locally stored edit token`}</
 
         <H2 id="quick">Plain curl</H2>
         <Code>{`# Pipe anything in and get a link back
-cat main.go | curl --data-binary @- '${HOST}/api/v1/pastes?name=main.go'
+cat main.go | curl --data-binary @- -H 'Content-Type: text/plain' '${HOST}/api/v1/pastes?name=main.go'
 
-# Options travel in the query string for raw bodies
-curl --data-binary @notes.md '${HOST}/api/v1/pastes?lang=markdown&expires=1d&burn=true'
+# Options travel in the query string for raw bodies (burn accepts true/false, or just ?burn)
+curl --data-binary @notes.md -H 'Content-Type: text/plain' '${HOST}/api/v1/pastes?lang=markdown&expires=1d&burn'
 
 # A form works too (curl -F) — the filename picks the language
-curl -F 'content=@script.py' -F expires=1h ${HOST}/api/v1/pastes
-
-# Shell function
-paste() { curl -s --data-binary @"\${1:--}" "${HOST}/api/v1/pastes?name=\${1:-}"; }
-cat file.txt | paste`}</Code>
+curl -F 'content=@script.py' -F expires=1h ${HOST}/api/v1/pastes`}</Code>
         <p className="mt-3 text-[13px] text-fg-muted">
           The edit token is returned in the <span className="font-mono">X-Edit-Token</span> header (and in the JSON body). Keep it if you want to change or delete the paste later.
+          Terminal clients (curl, wget, httpie) get the URL back as text and errors as <span className="font-mono">error: message (code)</span>; force a format with <span className="font-mono">Accept: application/json</span>, <span className="font-mono">Accept: text/plain</span>, or <span className="font-mono">?plain</span>.
+          Send <span className="font-mono">Content-Type: text/plain</span> for raw bodies so a file that happens to start with <span className="font-mono">content=</span> is not read as a form.
         </p>
 
         <H2 id="create">Create</H2>
@@ -85,9 +83,9 @@ Content-Type: application/json
 {
   "content": "hello",          // required, ≤ ${formatBytes(LIMITS.maxBytes)}
   "title": "hello.txt",        // optional, ≤ ${LIMITS.maxTitle} chars
-  "lang": "go",                // optional; id, alias or "auto" (default: text)
+  "lang": "go",                // optional; id or alias (unknown → "text"; auto-detection is a web-editor feature)
   "expires": "${DEFAULT_EXPIRY}",             // ${EXPIRIES.map((e) => e.id).join(" | ")}
-  "burn": false,               // destroy after the first read
+  "burn": false,               // destroy after the first read (true/false, 1/0, yes/no)
   "enc": { ... }               // present only for client-encrypted pastes, see below
 }
 
@@ -103,14 +101,18 @@ Content-Type: application/json
         </p>
 
         <H2 id="read">Read</H2>
-        <Code>{`GET /api/v1/pastes/:id          → JSON (counts a view; burn-after-read pastes are destroyed by this call)
-GET /:id/raw                    → text/plain
-GET /:id/raw?dl=1               → download with a filename
-GET /:id.go                     → web view highlighted as Go, whatever the stored language`}</Code>
+        <Code>{`GET  /api/v1/pastes/:id         → JSON (counts a view)
+GET  /:id/raw                   → text/plain (counts a view)
+GET  /:id/raw?dl=1              → download with a filename
+GET  /:id.go                    → web view highlighted as Go, whatever the stored language
+HEAD any of the above           → existence check only: never counts a view, never burns
+
+Every GET that returns content destroys a burn-after-read paste — including /raw, /raw/:key and
+/documents/:key. Only the web page (/:id) shows a confirmation first.`}</Code>
 
         <H2 id="update">Update &amp; delete</H2>
         <Code>{`PATCH  /api/v1/pastes/:id       Authorization: Bearer <editToken>
-       { "content": "…", "title": "…", "lang": "…" }   (any subset; expiry is kept)
+       { "content": "…", "title": "…", "lang": "…" }   (any subset; expiry is kept; "title": "" clears it)
 
 DELETE /api/v1/pastes/:id       Authorization: Bearer <editToken>   → 204`}</Code>
 
@@ -135,7 +137,7 @@ GET  /raw/:key             → text/plain`}</Code>
         <H2 id="limits">Limits &amp; errors</H2>
         <ul className="list-disc space-y-1 pl-5 text-[13px] text-fg-muted">
           <li>Content up to {formatBytes(LIMITS.maxBytes)}; titles up to {LIMITS.maxTitle} characters.</li>
-          <li>Rate limits per IP: 20 creates/min, 120 reads/min, 30 edits or deletes/min. Over the limit you get 429 with a Retry-After header.</li>
+          <li>Rate limits per IP: 20 creates/min, 120 reads/min, 30 edits or deletes/min, 5 reports/10 min. Over the limit you get 429 with a Retry-After header.</li>
           <li>
             Errors are <span className="font-mono">{'{ "error": { "code", "message" } }'}</span> with the matching HTTP status (400 invalid, 401/403 token problems, 404 missing or expired, 413 too large, 429 rate limited).
           </li>

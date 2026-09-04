@@ -6,6 +6,7 @@ import { History, Lock, Flame, Trash2 } from "lucide-react";
 import { forgetPaste } from "@/lib/local";
 import { useLocalPastes } from "@/hooks/use-local";
 import { formatRelative } from "@/lib/expiry";
+import { getLang } from "@/lib/langs";
 import { IconButton } from "@/components/ui/button";
 
 /** "Your pastes": recent pastes from this browser, with their edit tokens kept locally. */
@@ -30,13 +31,18 @@ export function LocalPastesMenu() {
 
   return (
     <div ref={ref} className="relative">
-      <IconButton label="Your pastes" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu">
+      <IconButton label="Your pastes" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="your-pastes">
         <History className="size-4" />
         {pastes.length > 0 && <span className="sr-only">{pastes.length} saved</span>}
       </IconButton>
       {open && (
         <div
-          role="menu"
+          id="your-pastes"
+          role="region"
+          aria-label="Your pastes"
+          onBlur={(e) => {
+            if (!ref.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
+          }}
           className="animate-fade-up absolute right-0 top-full mt-1.5 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-pop"
         >
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
@@ -53,7 +59,6 @@ export function LocalPastesMenu() {
                     href={`/${p.id}${p.key ? `#${p.key}` : ""}`}
                     onClick={() => setOpen(false)}
                     className="flex min-w-0 flex-1 flex-col rounded-md px-1.5 py-1 hover:bg-surface-2"
-                    role="menuitem"
                   >
                     <span className="flex items-center gap-1.5 truncate text-[13px]">
                       {p.encrypted && <Lock className="size-3 shrink-0 text-fg-faint" aria-label="encrypted" />}
@@ -61,7 +66,7 @@ export function LocalPastesMenu() {
                       <span className="truncate">{p.title || <span className="font-mono text-fg-muted">{p.id}</span>}</span>
                     </span>
                     <span className="truncate text-[11px] text-fg-faint">
-                      {p.lang !== "text" ? `${p.lang} · ` : ""}
+                      {p.lang !== "text" ? `${getLang(p.lang)?.label ?? p.lang} · ` : ""}
                       {formatRelative(p.created)}
                       {p.expires ? ` · expires ${formatRelative(p.expires)}` : ""}
                     </span>

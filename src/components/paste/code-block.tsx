@@ -23,22 +23,20 @@ export function lineHash(r: LineRange): string {
  * Click a number to link to that line; shift-click extends the range. The range is
  * stored in the URL hash (#L10-L20) so links to specific lines work everywhere.
  */
-export function CodeBlock({ lines, wrap, className }: { lines: string[]; wrap: boolean; className?: string }) {
+export function CodeBlock({ lines, wrap, className, linkable = true }: { lines: string[]; wrap: boolean; className?: string; linkable?: boolean }) {
   const [range, setRange] = useState<LineRange>(null);
 
+  // Hash-driven selection (initial load or back/forward) scrolls to the line; clicks don't.
   useEffect(() => {
-    const read = () => setRange(parseLineHash(location.hash));
+    const read = () => {
+      const r = parseLineHash(location.hash);
+      setRange(r);
+      if (r) requestAnimationFrame(() => document.getElementById(`L${r.start}`)?.scrollIntoView({ block: "center" }));
+    };
     read();
     window.addEventListener("hashchange", read);
     return () => window.removeEventListener("hashchange", read);
   }, []);
-
-  useEffect(() => {
-    if (!range) return;
-    document.getElementById(`L${range.start}`)?.scrollIntoView({ block: "center" });
-    // only on first mount / hash navigation
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range?.start]);
 
   const onGutterClick = useCallback(
     (e: MouseEvent<HTMLAnchorElement>, n: number) => {
@@ -48,9 +46,10 @@ export function CodeBlock({ lines, wrap, className }: { lines: string[]; wrap: b
       else if (range && range.start === n && range.end === n) next = null;
       else next = { start: n, end: n };
       setRange(next);
-      history.replaceState(null, "", `${location.pathname}${location.search}${lineHash(next)}`);
+      // Encrypted pastes keep their key in the hash; never overwrite it with a line anchor.
+      if (linkable) history.replaceState(null, "", `${location.pathname}${location.search}${lineHash(next)}`);
     },
-    [range],
+    [range, linkable],
   );
 
   const width = String(lines.length).length;
