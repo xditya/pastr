@@ -1,22 +1,30 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Security headers for every HTML response. API routes set their own CORS headers.
- * The CSP allows inline styles because shiki emits per-token `style` attributes.
+ * Security headers + a nonce-based Content Security Policy for every response.
+ * Next.js picks the nonce up from the CSP request header for its own inline scripts;
+ * our ThemeScript reads it from the `x-nonce` request header.
+ * Inline *styles* stay allowed because shiki emits per-token style attributes.
  */
 const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
   "Referrer-Policy": "no-referrer",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
   "Cross-Origin-Opener-Policy": "same-origin",
 };
 
+const PASTE_PATH = /^\/[A-Za-z0-9]{4,32}(\.[A-Za-z0-9+#-]+)?$/;
+
 export function proxy(request: NextRequest) {
   const isDev = process.env.NODE_ENV === "development";
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const path = request.nextUrl.pathname;
+  // Only paste pages may be framed, and only when explicitly embedded.
+  const embeddable = PASTE_PATH.test(path) && request.nextUrl.searchParams.get("embed") === "1";
+
   const csp = [
     "default-src 'self'",
-    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-inline' 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
@@ -24,19 +32,19 @@ export function proxy(request: NextRequest) {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    `frame-ancestors ${embeddable ? "*" : "'none'"}`,
     "upgrade-insecure-requests",
   ].join("; ");
 
-  const embed = request.nextUrl.searchParams.get("embed") === "1";
-  const response = NextResponse.next();
-  for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
-    if (embed && k === "X-Frame-Options") continue;
-    response.headers.set(k, v);
-  }
-  response.headers.set("Content-Security-Policy", embed ? csp.replace("frame-ancestors 'none'", "frame-ancestors *") : csp);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) response.headers.set(k, v);
+  if (!embeddable) response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Content-Security-Policy", csp);
   // Paste pages must never be indexed; the home/docs pages may be.
-  const path = request.nextUrl.pathname;
   if (path !== "/" && !path.startsWith("/docs") && !path.startsWith("/api")) {
     response.headers.set("X-Robots-Tag", "noindex, nofollow");
   }

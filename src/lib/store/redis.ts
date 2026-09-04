@@ -3,26 +3,26 @@ import type { PasteRecord } from "../paste";
 import { KEY, type PasteStore, type ReadResult } from "./types";
 
 /**
- * Atomic read + view count. Copies the paste TTL onto the view counter the first
- * time it is created so counters never outlive their paste.
+ * One round trip per read:
+ *  - increments the per-paste view counter and the global one
+ *  - burn-after-read pastes are deleted in the same atomic step, so two readers can
+ *    never both see the content
+ *  - the first view copies the paste's remaining TTL (ms precision) onto the counter,
+ *    so counters never outlive their paste
+ * The burn flag is detected on the serialized JSON (`"burn":true`); inside the
+ * `content`/`title` strings every quote is escaped, so the pattern cannot occur there.
  */
 const READ_SCRIPT = `
 local v = redis.call('GET', KEYS[1])
 if not v then return nil end
 local n = redis.call('INCR', KEYS[2])
-if n == 1 then
-  local t = redis.call('TTL', KEYS[1])
-  if t > 0 then redis.call('EXPIRE', KEYS[2], t) end
+redis.call('INCR', KEYS[3])
+if string.find(v, '"burn":true', 1, true) then
+  redis.call('DEL', KEYS[1], KEYS[2])
+elseif n == 1 then
+  local t = redis.call('PTTL', KEYS[1])
+  if t >= 0 then redis.call('PEXPIRE', KEYS[2], math.max(t, 1000)) end
 end
-return {v, n}
-`;
-
-/** Atomic burn-after-read: fetch and delete in one step so two readers can't both see it. */
-const BURN_SCRIPT = `
-local v = redis.call('GET', KEYS[1])
-if not v then return nil end
-local n = redis.call('INCR', KEYS[2])
-redis.call('DEL', KEYS[1], KEYS[2])
 return {v, n}
 `;
 
@@ -57,28 +57,16 @@ export class RedisStore implements PasteStore {
     return res === "OK";
   }
 
-  private async runRead(script: string, id: string): Promise<ReadResult> {
-    const res = await this.redis.eval<[], [unknown, number] | null>(script, [KEY.paste(id), KEY.views(id)], []);
+  async read(id: string): Promise<ReadResult> {
+    const res = await this.redis.eval<[], [unknown, number] | null>(
+      READ_SCRIPT,
+      [KEY.paste(id), KEY.views(id), KEY.stat("views")],
+      [],
+    );
     if (!res) return null;
     const record = parseRecord(res[0]);
     if (!record) return null;
     return { record, views: Number(res[1]) || 0 };
-  }
-
-  async read(id: string): Promise<ReadResult> {
-    // We don't know whether it's a burn paste until we read it. Peek first (1 round trip),
-    // then do the atomic op that matches. The peek is cheap and keeps the scripts simple.
-    const peek = await this.redis.get<PasteRecord | string>(KEY.paste(id));
-    const record = parseRecord(peek);
-    if (!record) return null;
-    return this.runRead(record.burn ? BURN_SCRIPT : READ_SCRIPT, id);
-  }
-
-  async readNonBurn(id: string): Promise<ReadResult> {
-    const res = await this.runRead(READ_SCRIPT, id);
-    // Defensive: if it turned into a burn paste between peek and read, don't leak a free view.
-    if (res?.record.burn) return null;
-    return res;
   }
 
   async peek(id: string): Promise<ReadResult> {
@@ -97,14 +85,17 @@ export class RedisStore implements PasteStore {
   }
 
   async delete(id: string): Promise<boolean> {
-    const n = await this.redis.del(KEY.paste(id), KEY.views(id), KEY.reports(id));
-    return n > 0;
+    const p = this.redis.pipeline();
+    p.del(KEY.paste(id));
+    p.del(KEY.views(id), KEY.reports(id));
+    const [deleted] = await p.exec<[number, number]>();
+    return Number(deleted) > 0;
   }
 
-  async report(id: string, reason: string, ip: string): Promise<number> {
+  async report(id: string, reason: string, reporter: string): Promise<number> {
     const key = KEY.reports(id);
     const p = this.redis.pipeline();
-    p.rpush(key, JSON.stringify({ reason, ip, at: Date.now() }));
+    p.rpush(key, JSON.stringify({ reason, reporter, at: Date.now() }));
     p.expire(key, REPORTS_TTL);
     const [n] = await p.exec<[number, number]>();
     return Number(n) || 0;
@@ -115,10 +106,7 @@ export class RedisStore implements PasteStore {
   }
 
   async stats() {
-    const [created, views] = await this.redis.mget<[number | null, number | null]>(
-      KEY.stat("created"),
-      KEY.stat("views"),
-    );
+    const [created, views] = await this.redis.mget<[number | null, number | null]>(KEY.stat("created"), KEY.stat("views"));
     return { created: Number(created) || 0, views: Number(views) || 0 };
   }
 

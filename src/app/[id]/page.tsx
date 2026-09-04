@@ -7,6 +7,8 @@ import { highlightLines } from "@/lib/highlight";
 import { getView } from "@/lib/view";
 import { formatBytes } from "@/lib/bytes";
 import { Shell } from "@/components/shell";
+import { enforceRateLimit } from "@/lib/ratelimit";
+import { HttpError, ipFromHeaders } from "@/lib/http";
 import { PasteView } from "@/components/paste/paste-view";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +28,7 @@ type Props = PageProps<"/[id]">;
 async function resolve(props: Props) {
   const { id: segment } = await props.params;
   const { id, lang: suffix } = splitIdAndLang(segment);
+  await limitPageReads();
   const view = await getView(id);
   if (!view) notFound();
   const override = suffix ? getLang(suffix)?.id : undefined;
@@ -33,7 +36,14 @@ async function resolve(props: Props) {
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
-  const { id, view } = await resolve(props);
+  let resolved: Awaited<ReturnType<typeof resolve>>;
+  try {
+    resolved = await resolve(props);
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 429) return { title: "Slow down", robots: { index: false } };
+    throw err;
+  }
+  const { id, view } = resolved;
   const { paste } = view;
   const title = paste.title ?? (view.mode === "encrypted" ? "Encrypted paste" : view.mode === "burn" ? "Burn-after-read paste" : `Paste ${id}`);
   const description =
@@ -52,8 +62,32 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   };
 }
 
+/** Same per-IP read budget as the API; a limited request renders a small notice instead of the paste. */
+async function limitPageReads() {
+  await enforceRateLimit("read", ipFromHeaders(await headers()));
+}
+
+function RateLimited() {
+  return (
+    <Shell>
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 py-24 text-center">
+        <p className="font-mono text-[12px] text-fg-faint">429</p>
+        <h1 className="text-[18px] font-semibold tracking-tight">Slow down</h1>
+        <p className="max-w-sm text-[13px] text-fg-muted">Too many requests from your network. Try again in a minute.</p>
+      </div>
+    </Shell>
+  );
+}
+
 export default async function PastePage(props: Props) {
-  const { view, override } = await resolve(props);
+  let resolved: Awaited<ReturnType<typeof resolve>>;
+  try {
+    resolved = await resolve(props);
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 429) return <RateLimited />;
+    throw err;
+  }
+  const { view, override } = resolved;
   const search = await props.searchParams;
   const embed = search.embed === "1" || search.embed === "true";
   const h = await headers();

@@ -10,7 +10,7 @@ type Entry = { record: PasteRecord; views: number; expiresAt: number | null };
 export class MemoryStore implements PasteStore {
   readonly kind = "memory" as const;
   private pastes = new Map<string, Entry>();
-  private reports = new Map<string, Array<{ reason: string; ip: string; at: number }>>();
+  private reports = new Map<string, Array<{ reason: string; reporter: string; at: number }>>();
   private counters = { created: 0, views: 0 };
 
   constructor(private now: () => number = () => Date.now()) {}
@@ -39,16 +39,10 @@ export class MemoryStore implements PasteStore {
     const e = this.live(id);
     if (!e) return null;
     e.views += 1;
+    this.counters.views += 1;
     const out = { record: structuredClone(e.record), views: e.views };
     if (e.record.burn) this.pastes.delete(id);
     return out;
-  }
-
-  async readNonBurn(id: string): Promise<ReadResult> {
-    const e = this.live(id);
-    if (!e || e.record.burn) return null;
-    e.views += 1;
-    return { record: structuredClone(e.record), views: e.views };
   }
 
   async peek(id: string): Promise<ReadResult> {
@@ -70,9 +64,9 @@ export class MemoryStore implements PasteStore {
     return existed;
   }
 
-  async report(id: string, reason: string, ip: string): Promise<number> {
+  async report(id: string, reason: string, reporter: string): Promise<number> {
     const list = this.reports.get(id) ?? [];
-    list.push({ reason, ip, at: this.now() });
+    list.push({ reason, reporter, at: this.now() });
     this.reports.set(id, list);
     return list.length;
   }
