@@ -27,7 +27,8 @@ export const DEFAULT_EXPIRY: ExpiryId = "7d";
 
 export const LIMITS = {
   /** Maximum size of the stored content field, in bytes (UTF-8 / ciphertext). */
-  maxBytes: Number(process.env.MAX_PASTE_BYTES ?? 1024 * 1024),
+  // NEXT_PUBLIC_ variant lets the client show the same limit the server enforces.
+  maxBytes: Number(process.env.NEXT_PUBLIC_MAX_PASTE_BYTES ?? process.env.MAX_PASTE_BYTES ?? 1024 * 1024),
   maxTitle: 120,
   maxReportReason: 500,
   idLength: 8,

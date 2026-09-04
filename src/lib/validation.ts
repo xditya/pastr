@@ -5,6 +5,17 @@ import { normalizeLang } from "./langs";
 
 const expiryIds = EXPIRIES.map((e) => e.id) as [string, ...string[]];
 
+/** Lenient boolean for query strings and forms: "true"/"1"/"yes"/"on" → true, "false"/"0"/"no"/"off"/"" → false. */
+export const looseBoolean = z
+  .union([z.boolean(), z.string(), z.number()])
+  .optional()
+  .transform((v) => {
+    if (typeof v === "boolean") return v;
+    if (typeof v === "number") return v !== 0;
+    if (v === undefined) return false;
+    return ["true", "1", "yes", "on"].includes(v.trim().toLowerCase());
+  });
+
 const base64url = z.string().regex(/^[A-Za-z0-9_-]+$/, "must be base64url");
 
 export const encryptionSchema = z.object({
@@ -33,7 +44,7 @@ export const createPasteSchema = z.object({
   title: titleSchema,
   lang: z.unknown().optional().transform(normalizeLang),
   expires: z.enum(expiryIds).optional(),
-  burn: z.coerce.boolean().optional().default(false),
+  burn: looseBoolean,
   enc: encryptionSchema.optional(),
 });
 export type CreatePasteInput = z.infer<typeof createPasteSchema>;

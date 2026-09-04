@@ -104,6 +104,15 @@ describe("validation", () => {
     expect(r.burn).toBe(true);
     expect(r.title).toBeUndefined();
   });
+  it("parses loose booleans from forms and query strings", () => {
+    expect(createPasteSchema.parse({ content: "x", burn: "false" }).burn).toBe(false);
+    expect(createPasteSchema.parse({ content: "x", burn: "0" }).burn).toBe(false);
+    expect(createPasteSchema.parse({ content: "x", burn: "" }).burn).toBe(false);
+    expect(createPasteSchema.parse({ content: "x", burn: "yes" }).burn).toBe(true);
+    expect(createPasteSchema.parse({ content: "x", burn: "1" }).burn).toBe(true);
+    expect(createPasteSchema.parse({ content: "x", burn: true }).burn).toBe(true);
+    expect(createPasteSchema.parse({ content: "x" }).burn).toBe(false);
+  });
   it("rejects empty and oversized content", () => {
     expect(createPasteSchema.safeParse({ content: "   " }).success).toBe(false);
     expect(createPasteSchema.safeParse({ content: "x".repeat(1024 * 1024 + 1) }).success).toBe(false);
