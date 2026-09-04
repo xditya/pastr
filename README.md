@@ -79,6 +79,22 @@ CHROMIUM_PATH=/path/to/chromium BASE=http://localhost:3111 node e2e/ui.mjs   # b
 
 Add a language: append to `src/lib/langs.ts`, then run `pnpm gen:grammars`.
 
+## CLI
+
+Paste without opening the site. Lives in [`cli/`](cli/) and is published as `paster-cli`; every instance also serves a shell version.
+
+```sh
+npm install -g paster-cli && paster config host https://your-host     # Node 20+, supports -E encryption
+curl -fsSL https://your-host/install.sh | sh                          # POSIX sh + curl, host preconfigured
+
+ls -la | paster                 # stdin
+paster main.go -e 1d            # files
+paster clip -E -c               # clipboard → encrypted, link copied back
+paster text "hello" -b          # burn after read
+paster get URL#key              # print/decrypt
+paster ls / paster rm ID        # history and delete (edit tokens stay on your machine)
+```
+
 ## API
 
 Everything the site does is available over HTTP; see [`/docs`](src/app/docs/page.tsx) on a running instance.

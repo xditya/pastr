@@ -43,7 +43,25 @@ export default async function DocsPage() {
           which case you get the URL back as text.
         </p>
 
-        <H2 id="quick">From the terminal</H2>
+        <H2 id="cli">Install the CLI</H2>
+        <p className="text-[13px] text-fg-muted">
+          Paste without opening the site. The Node version supports end-to-end encryption; the shell version needs only <span className="font-mono">curl</span>.
+        </p>
+        <Code>{`# Node 20+ (npm) — full featured, incl. -E for encryption
+npm install -g paster-cli
+paster config host ${HOST}
+
+# No Node? POSIX shell + curl, with this host preconfigured
+curl -fsSL ${HOST}/install.sh | sh`}</Code>
+        <Code>{`ls -la | paster                  # stdin
+paster main.go --expires 1d      # files (language from the extension)
+paster clip -E -c                # clipboard → encrypted paste, link copied back
+paster text "hello there" -b     # literal text, burn after read
+paster get ${HOST}/AbCd1234#key  # print (and decrypt) a paste
+paster ls                        # pastes made from this machine
+paster rm AbCd1234               # delete with the locally stored edit token`}</Code>
+
+        <H2 id="quick">Plain curl</H2>
         <Code>{`# Pipe anything in and get a link back
 cat main.go | curl --data-binary @- '${HOST}/api/v1/pastes?name=main.go'
 
