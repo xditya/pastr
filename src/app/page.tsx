@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Shell } from "@/components/shell";
 import { NewPaste } from "@/components/editor/new-paste";
-import { SITE } from "@/lib/config";
+import { LIMITS, SITE } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: `${SITE.name} — ${SITE.tagline}`,
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function HomePage() {
   return (
     <Shell wide>
-      <NewPaste />
+      <NewPaste maxBytes={LIMITS.maxBytes} />
     </Shell>
   );
 }

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { LIMITS } from "@/lib/config";
-import { bearerToken, clientIp, errorResponse, json, options, readBody } from "@/lib/http";
+import { CORS_HEADERS, bearerToken, clientIp, errorResponse, headFromPeek, json, options, readBody } from "@/lib/http";
+import { splitIdAndLang } from "@/lib/langs";
 import { enforceRateLimit } from "@/lib/ratelimit";
 import { deletePaste, readPaste, updatePaste } from "@/lib/service";
 import { originFrom, pasteUrl } from "@/lib/url";
@@ -13,10 +14,15 @@ export async function OPTIONS() {
   return options();
 }
 
+/** HEAD never counts a view or burns: it only reports whether the paste exists. */
+export async function HEAD(_req: NextRequest, { params }: Ctx) {
+  return headFromPeek(splitIdAndLang((await params).id).id, { "Content-Type": "application/json" });
+}
+
 /** Read a paste. Counts a view; burn-after-read pastes are destroyed by this call. */
 export async function GET(req: NextRequest, { params }: Ctx) {
   try {
-    const { id } = await params;
+    const { id } = splitIdAndLang((await params).id);
     await enforceRateLimit("read", clientIp(req));
     const paste = await readPaste(id);
     const origin = originFrom(req);
@@ -29,7 +35,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 /** Update content/title/lang. Requires `Authorization: Bearer <editToken>`. Keeps the original expiry. */
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
-    const { id } = await params;
+    const { id } = splitIdAndLang((await params).id);
     await enforceRateLimit("mutate", clientIp(req));
     const body = await readBody(req, LIMITS.maxBytes);
     const paste = await updatePaste(id, bearerToken(req), body);
@@ -42,10 +48,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 /** Delete. Requires `Authorization: Bearer <editToken>`. */
 export async function DELETE(req: NextRequest, { params }: Ctx) {
   try {
-    const { id } = await params;
+    const { id } = splitIdAndLang((await params).id);
     await enforceRateLimit("mutate", clientIp(req));
     await deletePaste(id, bearerToken(req));
-    return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*" } });
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
   } catch (err) {
     return errorResponse(err);
   }

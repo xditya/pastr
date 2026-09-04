@@ -19,7 +19,11 @@ export const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
-const NO_STORE = { "Cache-Control": "no-store" };
+const NO_STORE: Record<string, string> = {
+  "Cache-Control": "no-store",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+};
 
 export function json<T>(data: T, init: ResponseInit & { headers?: Record<string, string> } = {}) {
   return NextResponse.json(data, {
@@ -46,8 +50,19 @@ export function errorResponse(err: unknown, wantsText = false) {
       ? err
       : new HttpError(500, "internal_error", "something went wrong");
   if (e.status >= 500) console.error(err);
-  if (wantsText) return text(`error: ${e.message}\n`, { status: e.status, headers: e.headers });
+  if (wantsText) return text(`error: ${e.message} (${e.code})\n`, { status: e.status, headers: { "X-Error-Code": e.code, ...(e.headers ?? {}) } });
   return json({ error: { code: e.code, message: e.message } }, { status: e.status, headers: e.headers });
+}
+
+/** Shared HEAD handler: existence + headers only, no view counting, no burning. */
+export async function headFromPeek(id: string, extra: Record<string, string> = {}) {
+  const { peekPaste } = await import("./service");
+  const p = await peekPaste(id);
+  if (!p) return new Response(null, { status: 404, headers: { ...CORS_HEADERS, ...NO_STORE } });
+  return new Response(null, {
+    status: 200,
+    headers: { ...CORS_HEADERS, ...NO_STORE, ...(p.enc ? { "X-Encrypted": "1" } : {}), ...extra },
+  });
 }
 
 export function options() {
@@ -70,9 +85,12 @@ export function ipFromHeaders(h: Headers): string {
     .map((s) => s.trim())
     .filter(Boolean);
   if (xff.length) {
-    const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? (process.env.VERCEL ? 0 : 1));
-    if (hops <= 0) return xff[0];
-    return xff[Math.max(0, xff.length - hops)];
+    const raw = Number(process.env.TRUSTED_PROXY_HOPS ?? (process.env.VERCEL ? 0 : 1));
+    const hops = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 1;
+    if (hops === 0) return xff[0];
+    // Chain shorter than the trusted depth means the header was client-supplied: share one bucket.
+    if (xff.length < hops) return "untrusted";
+    return xff[xff.length - hops];
   }
   return h.get("x-real-ip") ?? h.get("cf-connecting-ip") ?? "0.0.0.0";
 }
@@ -90,7 +108,7 @@ export function prefersText(req: Request): boolean {
   if (accept.includes("text/plain")) return true;
   if ((req.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) return false;
   const ua = (req.headers.get("user-agent") ?? "").toLowerCase();
-  return /^(curl|wget|httpie|xh|fetch)\b/.test(ua) || ua.startsWith("python-requests");
+  return /^(curl|wget|httpie|xh)\b/.test(ua);
 }
 
 export function bearerToken(req: Request): string | undefined {
@@ -143,7 +161,7 @@ export async function readBody(req: Request, maxBytes: number): Promise<Record<s
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new HttpError(400, "bad_request", "JSON body must be an object");
       }
-      return parsed as Record<string, unknown>;
+      return withQueryOptions(req, normalizeFields(parsed as Record<string, unknown>));
     } catch (e) {
       if (e instanceof HttpError) throw e;
       throw new HttpError(400, "bad_request", "invalid JSON body");
@@ -161,21 +179,21 @@ export async function readBody(req: Request, maxBytes: number): Promise<Record<s
       if (typeof v === "string") out[k] = v;
       else {
         out[k] = await v.text();
-        if (v.name && !out.filename) out.filename = v.name;
+        if (v.name && v.name !== "-" && !out.filename) out.filename = v.name;
       }
     }
-    return out;
+    return withQueryOptions(req, normalizeFields(out));
   }
   if (ct.includes("application/x-www-form-urlencoded")) {
     // curl's default content type for --data / --data-binary. If it doesn't look like a form
     // (no `content=` field) treat the whole body as the paste text, like hastebin does.
+    // A real form encoder never emits raw newlines, so anything multi-line is treated as text.
     const body = text();
-    if (/(^|&)(content|data)=/.test(body)) {
+    if (FORM_SHAPED.test(body) && /(^|&)(content|data|file|text)=/.test(body)) {
       const params = new URLSearchParams(body);
       const out: Record<string, unknown> = {};
       for (const [k, v] of params.entries()) out[k] = v;
-      if (out.data !== undefined && out.content === undefined) out.content = out.data;
-      return withQueryOptions(req, out);
+      return withQueryOptions(req, normalizeFields(out));
     }
     return withQueryOptions(req, { content: body });
   }
@@ -183,12 +201,27 @@ export async function readBody(req: Request, maxBytes: number): Promise<Record<s
   return withQueryOptions(req, { content: text() });
 }
 
-/** Query-string options (?lang=go&expires=1d&name=main.go) complement form/raw bodies. */
+const FORM_SHAPED = /^[\w.\-]+=[^&\n\r]*(?:&[\w.\-]+=[^&\n\r]*)*$/;
+
+/** Accept the common aliases clients use for the content and file name fields. */
+function normalizeFields(out: Record<string, unknown>): Record<string, unknown> {
+  if (out.content === undefined) {
+    const alt = out.data ?? out.file ?? out.text;
+    if (typeof alt === "string") out.content = alt;
+  }
+  if (out.filename === undefined && typeof out.name === "string" && out.name) out.filename = out.name;
+  return out;
+}
+
+/** Query-string options (?lang=go&expires=1d&name=main.go&burn) complement any body. */
 function withQueryOptions(req: Request, out: Record<string, unknown>): Record<string, unknown> {
   const url = new URL(req.url);
   for (const key of ["title", "lang", "expires", "burn", "name", "filename"]) {
-    const v = url.searchParams.get(key);
-    if (v !== null && out[key === "name" ? "filename" : key] === undefined) out[key === "name" ? "filename" : key] = v;
+    let v = url.searchParams.get(key);
+    if (v === null) continue;
+    if (key === "burn" && v === "") v = "true";
+    const target = key === "name" ? "filename" : key;
+    if (out[target] === undefined) out[target] = v;
   }
   return out;
 }

@@ -29,9 +29,12 @@ function matches(e: KeyboardEvent, combo: string): boolean {
 export function useHotkeys(hotkeys: Hotkey[]) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       const target = e.target as HTMLElement | null;
+      if (target?.closest?.("dialog[open]")) return;
       const typing = !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
       for (const h of hotkeys) {
+        if (!h.combo.includes("+") && (e.ctrlKey || e.metaKey || e.altKey)) continue;
         if (!matches(e, h.combo)) continue;
         const allowInInputs = h.inInputs ?? h.combo.includes("mod+");
         if (typing && !allowInInputs) continue;

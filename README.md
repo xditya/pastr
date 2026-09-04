@@ -122,10 +122,11 @@ curl --data-binary @file https://your-host/documents
 - Encrypted pastes hide title and language too. `/raw` returns ciphertext and an `X-Encrypted: 1` header.
 - `Referrer-Policy: no-referrer` so URL fragments (keys) never leak through links; a nonce-based CSP (`script-src 'self' 'nonce-…' 'strict-dynamic'`); `X-Robots-Tag: noindex` on every paste; framing only allowed for `?embed=1` paste pages.
 - Per-IP sliding-window rate limits on create, read (API, pages and OG images), mutate and report; request bodies are capped while streaming, not just by `Content-Length`; 1 MiB content cap; titles capped at 120 characters.
-- Behind your own reverse proxy set `TRUSTED_PROXY_HOPS` (default 1; Vercel needs nothing) so clients cannot spoof `X-Forwarded-For` past the limiter.
+- Self-hosting must sit behind a reverse proxy that appends `X-Forwarded-For` (nginx `$proxy_add_x_forwarded_for`, Caddy's default); set `TRUSTED_PROXY_HOPS` to the number of proxies (default 1; Vercel needs nothing). A directly exposed Node process cannot tell a spoofed header from a real one, so rate limits would be bypassable.
 - Encrypted pastes can only be updated with fresh encryption metadata; reusing an IV is rejected.
 - Burn-after-read uses an atomic Lua script so two readers can never both see the content.
-- Reports store a salted hash of the reporter's IP (never the IP itself) for 30 days and are optionally forwarded to a webhook with mentions disabled; `ADMIN_TOKEN` lets an operator delete anything.
+- Reports store a salted hash of the reporter's IP (never the IP itself; salted with `REPORT_SALT`, else the admin token or the Redis token) for 30 days and are optionally forwarded to a webhook with mentions disabled; `ADMIN_TOKEN` lets an operator delete anything.
+- `HEAD` requests never count views or burn pastes, so link checkers and previewers are safe. Every `GET` that returns content does consume a burn-after-read paste.
 
 ## Compared with pasty
 

@@ -45,6 +45,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   }
   const { id, view } = resolved;
   const { paste } = view;
+  const origin = await requestOrigin();
   const title = paste.title ?? (view.mode === "encrypted" ? "Encrypted paste" : view.mode === "burn" ? "Burn-after-read paste" : `Paste ${id}`);
   const description =
     view.mode === "plain"
@@ -53,13 +54,22 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
         ? "This paste self-destructs after it is viewed once."
         : "This paste is end-to-end encrypted. Only someone with the key can read it.";
   return {
+    metadataBase: new URL(origin),
     title,
     description,
     robots: { index: false, follow: false },
-    openGraph: { title, description, type: "article", url: `/${id}` },
-    twitter: { card: "summary_large_image", title, description },
-    alternates: { canonical: `/${id}` },
+    openGraph: { title, description, type: "article", url: `${origin}/${id}`, images: [{ url: `${origin}/${id}/opengraph-image`, width: 1200, height: 630 }] },
+    twitter: { card: "summary_large_image", title, description, images: [`${origin}/${id}/opengraph-image`] },
+    alternates: { canonical: `${origin}/${id}` },
   };
+}
+
+/** Public origin for absolute URLs: NEXT_PUBLIC_SITE_URL, else the forwarded host. */
+async function requestOrigin(): Promise<string> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || `${proto}://${host}`;
 }
 
 /** Same per-IP read budget as the API; a limited request renders a small notice instead of the paste. */
@@ -89,11 +99,8 @@ export default async function PastePage(props: Props) {
   }
   const { view, override } = resolved;
   const search = await props.searchParams;
-  const embed = search.embed === "1" || search.embed === "true";
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || `${proto}://${host}`;
+  const embed = search.embed === "1"; // must match proxy.ts, which only lifts framing rules for embed=1
+  const origin = await requestOrigin();
 
   const lang = override ?? view.paste.lang;
   const highlighted = view.mode === "plain" ? await highlightLines(view.paste.content, lang) : null;

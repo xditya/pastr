@@ -112,6 +112,12 @@ describe("validation", () => {
     expect(createPasteSchema.parse({ content: "x", burn: "1" }).burn).toBe(true);
     expect(createPasteSchema.parse({ content: "x", burn: true }).burn).toBe(true);
     expect(createPasteSchema.parse({ content: "x" }).burn).toBe(false);
+    expect(createPasteSchema.safeParse({ content: "x", burn: "maybe" }).success).toBe(false);
+  });
+  it("update can clear the title", () => {
+    expect(updatePasteSchema.parse({ title: "" }).title).toBe("");
+    expect(updatePasteSchema.parse({ title: null }).title).toBe("");
+    expect(updatePasteSchema.parse({ title: " keep " }).title).toBe("keep");
   });
   it("rejects empty and oversized content", () => {
     expect(createPasteSchema.safeParse({ content: "   " }).success).toBe(false);

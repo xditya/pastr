@@ -10,8 +10,9 @@ import { LANGS, langFromFilename } from "@/lib/langs";
 import { encryptEnvelope, reencryptEnvelope } from "@/lib/crypto";
 import type { EncryptionMeta } from "@/lib/paste";
 import { api, ApiError } from "@/lib/client";
-import { getPrefs, rememberPaste, setPrefs, updateLocalPaste } from "@/lib/local";
+import { rememberPaste, setPrefs, updateLocalPaste } from "@/lib/local";
 import { useHotkeys, isMac } from "@/hooks/use-hotkeys";
+import { useMounted, usePrefs } from "@/hooks/use-local";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -34,26 +35,36 @@ export type EditTarget = {
   burn: boolean;
 };
 
+export type SavedPaste = { id: string; content: string; title?: string; lang: string; enc?: EncryptionMeta };
+
 export type EditorProps = {
   /** When set, the editor updates an existing paste instead of creating a new one. */
   edit?: EditTarget;
   /** Pre-filled content (used by "Fork"). */
   initial?: { content: string; title?: string; lang?: string };
+  /** Server-side content limit in bytes (the client bundle can't read MAX_PASTE_BYTES). */
+  maxBytes?: number;
   onCancel?: () => void;
-  onSaved?: (id: string) => void;
+  onSaved?: (saved: SavedPaste) => void;
+  /** Called when the server rejects the edit token (401/403). */
+  onAuthError?: () => void;
 };
 
-export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
+export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, onCancel, onSaved, onAuthError }: EditorProps) {
   const router = useRouter();
   const { push } = useToast();
-  const prefs = useMemo(() => getPrefs(), []);
+  // Saved preferences only apply after hydration so the server-rendered form matches the first client render.
+  const mounted = useMounted();
+  const prefs = usePrefs();
 
   const [content, setContent] = useState(edit?.content ?? initial?.content ?? "");
   const [title, setTitle] = useState(edit?.title ?? initial?.title ?? "");
-  const [lang, setLang] = useState<string>(edit?.lang ?? initial?.lang ?? prefs.lang ?? "auto");
-  const [expiry, setExpiry] = useState<string>(prefs.expiry ?? DEFAULT_EXPIRY);
+  const [lang, setLang] = useState<string>(edit?.lang ?? initial?.lang ?? "auto");
+  const [expiryChoice, setExpiry] = useState<string | null>(null);
+  const expiry = expiryChoice ?? (mounted ? prefs.expiry : DEFAULT_EXPIRY);
   const [burn, setBurn] = useState(false);
-  const [encrypt, setEncrypt] = useState(edit ? !!edit.enc : prefs.encryptByDefault);
+  const [encryptChoice, setEncrypt] = useState<boolean | null>(edit ? !!edit.enc : null);
+  const encrypt = encryptChoice ?? (mounted ? prefs.encryptByDefault : false);
   const [password, setPassword] = useState("");
   const [usePassword, setUsePassword] = useState(edit?.enc?.kdf === "password");
   const [saving, setSaving] = useState(false);
@@ -62,6 +73,9 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  /** Escape inside the textarea arms this so the next Tab moves focus instead of indenting. */
+  const tabMovesFocus = useRef(false);
+  const dragDepth = useRef(0);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -70,8 +84,40 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
   const bytes = useMemo(() => byteLength(content), [content]);
   const lines = useMemo(() => (content ? content.split("\n").length : 1), [content]);
   const detected = useMemo(() => (lang === "auto" ? detectLang(content) : lang), [lang, content]);
-  const tooLarge = bytes > LIMITS.maxBytes;
+  /** What the server will actually store: base64url of the JSON envelope plus the GCM tag when encrypting. */
+  const effectiveBytes = useMemo(
+    () => (encrypt ? Math.ceil((byteLength(JSON.stringify({ title: title.trim() || undefined, lang: detected, content })) + 16) * (4 / 3)) : bytes),
+    [encrypt, title, detected, content, bytes],
+  );
+  const tooLarge = effectiveBytes > maxBytes;
   const canSave = content.trim().length > 0 && !tooLarge && !saving && (!encrypt || !usePassword || password.length > 0);
+  const dirty = content !== (edit?.content ?? initial?.content ?? "") || title !== (edit?.title ?? initial?.title ?? "");
+
+  // Don't lose an unsaved paste to an accidental tab close.
+  useEffect(() => {
+    if (!dirty || saving) return;
+    const onUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, [dirty, saving]);
+
+  const cancel = useCallback(() => {
+    if (!onCancel) return;
+    if (dirty && !window.confirm("Discard your changes?")) return;
+    onCancel();
+  }, [dirty, onCancel]);
+
+  const gutter = useMemo(
+    () =>
+      Array.from({ length: lines }, (_, i) => (
+        <div key={i} className="px-3">
+          {i + 1}
+        </div>
+      )),
+    [lines],
+  );
 
   const syncScroll = () => {
     if (gutterRef.current && textareaRef.current) gutterRef.current.scrollTop = textareaRef.current.scrollTop;
@@ -79,8 +125,8 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
 
   const loadFile = useCallback(
     async (file: File) => {
-      if (file.size > LIMITS.maxBytes) {
-        push("error", `${file.name} is larger than ${formatBytes(LIMITS.maxBytes)}`);
+      if (file.size > maxBytes) {
+        push("error", `${file.name} is larger than ${formatBytes(maxBytes)}`);
         return;
       }
       const text = await file.text();
@@ -94,11 +140,28 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
       if (l) setLang(l.id);
       push("success", `Loaded ${file.name}`);
     },
-    [push, title],
+    [push, title, maxBytes],
   );
 
+  // Only react to file drags; text drags keep the browser's native behaviour.
+  const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+  const onDragEnter = (e: DragEvent) => {
+    if (!hasFiles(e)) return;
+    dragDepth.current += 1;
+    setDragging(true);
+  };
+  const onDragOver = (e: DragEvent) => {
+    if (hasFiles(e)) e.preventDefault();
+  };
+  const onDragLeave = (e: DragEvent) => {
+    if (!hasFiles(e)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
+  };
   const onDrop = (e: DragEvent) => {
+    if (!hasFiles(e)) return;
     e.preventDefault();
+    dragDepth.current = 0;
     setDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file) void loadFile(file);
@@ -110,24 +173,41 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
     e.target.value = "";
   };
 
-  const handleTab = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key !== "Tab" || e.ctrlKey || e.metaKey || e.altKey) return;
-    // Tab indents by two spaces; Shift+Tab outdents. Escape then Tab still moves focus.
-    e.preventDefault();
+  /**
+   * Tab indents (two spaces), Shift+Tab outdents, multi-line selections indent every line.
+   * Edits go through setRangeText so the browser's undo stack survives. Press Escape first
+   * to let Tab move focus (an accessibility escape hatch that is announced in the status bar).
+   */
+  const [tabHint, setTabHint] = useState(false);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget;
-    const { selectionStart: s, selectionEnd: end, value } = el;
-    if (e.shiftKey) {
-      const lineStart = value.lastIndexOf("\n", s - 1) + 1;
-      if (value.startsWith("  ", lineStart)) {
-        const next = value.slice(0, lineStart) + value.slice(lineStart + 2);
-        setContent(next);
-        requestAnimationFrame(() => el.setSelectionRange(Math.max(lineStart, s - 2), Math.max(lineStart, end - 2)));
-      }
+    if (e.key === "Escape") {
+      tabMovesFocus.current = true;
+      setTabHint(true);
+      e.stopPropagation();
       return;
     }
-    const next = value.slice(0, s) + "  " + value.slice(end);
-    setContent(next);
-    requestAnimationFrame(() => el.setSelectionRange(s + 2, s + 2));
+    if (e.key !== "Tab" || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (tabMovesFocus.current) {
+      tabMovesFocus.current = false;
+      setTabHint(false);
+      return; // native focus move
+    }
+    e.preventDefault();
+    const { selectionStart: s, selectionEnd: end, value } = el;
+    const selected = value.slice(s, end);
+    const apply = (replacement: string, from: number, to: number, mode: "select" | "end") => {
+      el.setRangeText(replacement, from, to, mode);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    if (selected.includes("\n") || e.shiftKey) {
+      const lineStart = value.lastIndexOf("\n", s - 1) + 1;
+      const block = value.slice(lineStart, end);
+      const next = e.shiftKey ? block.replace(/^ {1,2}/gm, "") : block.replace(/^/gm, "  ");
+      apply(next, lineStart, end, "select");
+      return;
+    }
+    apply("  ", s, end, "end");
   };
 
   const save = useCallback(async () => {
@@ -136,21 +216,23 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
     try {
       const finalLang = lang === "auto" ? detectLang(content) : lang;
       const cleanTitle = title.trim() || undefined;
-      setPrefs({ expiry, lang, encryptByDefault: encrypt });
 
       if (edit) {
         // ---- update existing paste ----
+        let enc: EncryptionMeta | undefined;
         if (edit.enc && edit.secret) {
-          const { ciphertext, meta } = await reencryptEnvelope({ title: cleanTitle, lang: finalLang, content }, edit.enc, edit.secret);
-          await api.update(edit.id, edit.editToken, { content: ciphertext, enc: meta });
+          const r = await reencryptEnvelope({ title: cleanTitle, lang: finalLang, content }, edit.enc, edit.secret);
+          enc = r.meta;
+          await api.update(edit.id, edit.editToken, { content: r.ciphertext, enc: r.meta });
         } else {
           await api.update(edit.id, edit.editToken, { content, title: cleanTitle ?? "", lang: finalLang });
         }
         updateLocalPaste(edit.id, { title: cleanTitle, lang: edit.enc ? "text" : finalLang });
         push("success", "Saved");
-        onSaved?.(edit.id);
+        onSaved?.({ id: edit.id, content, title: cleanTitle, lang: finalLang, enc });
         return;
       }
+      setPrefs({ expiry, encryptByDefault: encrypt });
 
       // ---- create ----
       let body: Parameters<typeof api.create>[0];
@@ -178,23 +260,28 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
         encrypted: encrypt,
       });
       const target = `/${created.id}${!encrypt && finalLang !== "text" ? `.${finalLang}` : ""}${fragment ? `#${fragment}` : ""}`;
-      onSaved?.(created.id);
+      onSaved?.({ id: created.id, content, title: cleanTitle, lang: finalLang, enc: body.enc });
       router.push(target);
     } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403) && onAuthError) {
+        setSaving(false);
+        onAuthError();
+        return;
+      }
       const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "failed to save";
       push("error", msg);
       setSaving(false);
     }
-  }, [canSave, lang, content, title, expiry, encrypt, edit, push, onSaved, usePassword, password, burn, router]);
+  }, [canSave, lang, content, title, expiry, encrypt, edit, push, onSaved, onAuthError, usePassword, password, burn, router]);
 
   useHotkeys(
     useMemo(
       () => [
         { combo: "mod+s", handler: () => void save() },
         { combo: "mod+enter", handler: () => void save() },
-        ...(onCancel ? [{ combo: "escape", handler: () => onCancel(), inInputs: true }] : []),
+        ...(onCancel ? [{ combo: "escape", handler: cancel }] : []),
       ],
-      [save, onCancel],
+      [save, onCancel, cancel],
     ),
   );
 
@@ -203,7 +290,7 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
     void save();
   };
 
-  const mac = isMac();
+  const mac = mounted && isMac();
 
   return (
     <form
@@ -211,11 +298,9 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
       action="/api/v1/pastes"
       onSubmit={onSubmit}
       className="flex flex-1 flex-col"
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragging(true);
-      }}
-      onDragLeave={() => setDragging(false)}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       {/* Options bar */}
@@ -297,13 +382,13 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
         )}
         <div className="ml-auto flex items-center gap-2">
           {onCancel && (
-            <Button type="button" variant="ghost" onClick={onCancel}>
+            <Button type="button" variant="ghost" onClick={cancel}>
               Cancel
             </Button>
           )}
           <Button type="button" variant="ghost" onClick={() => fileRef.current?.click()} title="Open a text file">
             <Upload className="size-3.5" aria-hidden />
-            <span className="hidden sm:inline">File</span>
+            <span className="sr-only sm:not-sr-only">File</span>
           </Button>
           <input ref={fileRef} type="file" className="hidden" onChange={onFileInput} accept="text/*,.md,.json,.yml,.yaml,.toml,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.kt,.c,.cpp,.h,.cs,.rb,.php,.sh,.sql,.log,.csv,.xml,.diff,.patch" />
           <Button type="submit" variant="primary" disabled={!canSave} loading={saving}>
@@ -322,11 +407,7 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
         )}
       >
         <div ref={gutterRef} aria-hidden className="code select-none overflow-hidden border-r border-border bg-surface-2/60 py-3 text-right text-[var(--gutter)]">
-          {Array.from({ length: lines }, (_, i) => (
-            <div key={i} className="px-3">
-              {i + 1}
-            </div>
-          ))}
+          {gutter}
         </div>
         <textarea
           ref={textareaRef}
@@ -334,7 +415,8 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onScroll={syncScroll}
-          onKeyDown={handleTab}
+          onKeyDown={handleKeyDown}
+          wrap="off"
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
@@ -352,9 +434,14 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
       {/* Status bar */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-[12px] text-fg-faint">
         <span className={cn(tooLarge && "text-danger")}>
-          {lines} {lines === 1 ? "line" : "lines"} · {content.length.toLocaleString()} chars · {formatBytes(bytes)}
-          {tooLarge && ` — over the ${formatBytes(LIMITS.maxBytes)} limit`}
+          {lines} {lines === 1 ? "line" : "lines"} · {content.length.toLocaleString("en-US")} chars · {formatBytes(bytes)}
+          {encrypt && ` (≈${formatBytes(effectiveBytes)} encrypted)`}
+          {tooLarge && ` — over the ${formatBytes(maxBytes)} limit`}
         </span>
+        {tabHint && <span>Tab now moves focus</span>}
+        <noscript>
+          <span>Encryption and burn-after-read need JavaScript; plain pastes work without it.</span>
+        </noscript>
         {encrypt && (
           <span className="flex items-center gap-1">
             <Lock className="size-3" aria-hidden />
@@ -367,7 +454,7 @@ export function Editor({ edit, initial, onCancel, onSaved }: EditorProps) {
           </span>
         )}
         <span className="ml-auto hidden items-center gap-1 sm:flex">
-          <Kbd>Tab</Kbd> indents · <Kbd>{mac ? "⌘" : "Ctrl"}</Kbd>
+          <Kbd>Tab</Kbd> indents · <Kbd>Esc</Kbd> then <Kbd>Tab</Kbd> leaves · <Kbd>{mac ? "⌘" : "Ctrl"}</Kbd>
           <Kbd>↵</Kbd> saves
         </span>
       </div>

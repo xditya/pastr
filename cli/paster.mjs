@@ -319,7 +319,7 @@ Usage
 
 Options
   -t, --title <text>      title (defaults to the file name)
-  -l, --lang <id>         language id or alias (default: from the file name, else auto)
+  -l, --lang <id>         language id or alias (default: from the file name, else plain text)
   -e, --expires <when>    10m | 1h | 1d | 7d | 30d | never  (default: 7d)
   -b, --burn              destroy after the first read
   -E, --encrypt           encrypt here; the key goes in the URL after #

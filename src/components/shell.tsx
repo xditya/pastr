@@ -42,7 +42,7 @@ export function Shell({ children, actions, wide }: { children: ReactNode; action
           <a href={SITE.repo} className="hover:text-fg" rel="noopener noreferrer" target="_blank">
             Source
           </a>
-          <span className="ml-auto">No ads. No accounts. Nothing is logged but the paste.</span>
+          <span className="ml-auto">No ads. No accounts. No tracking.</span>
         </div>
       </footer>
     </div>

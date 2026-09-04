@@ -25,12 +25,16 @@ function background(task: () => Promise<unknown>) {
 
 export async function createPaste(raw: Record<string, unknown>): Promise<CreatedPaste> {
   // Filename hint (from multipart uploads or ?name=) fills in lang/title when absent.
-  if (typeof raw.filename === "string" && raw.filename) {
-    const l = langFromFilename(raw.filename);
-    if (l && (raw.lang === undefined || raw.lang === "" || raw.lang === "auto")) raw.lang = l.id;
-    if (!raw.title) raw.title = raw.filename;
+  if (typeof raw.filename === "string") {
+    const base = raw.filename.split(/[\\/]/).pop() ?? "";
+    if (base && base !== "-") {
+      const l = langFromFilename(base);
+      if (l && (raw.lang === undefined || raw.lang === "" || raw.lang === "auto")) raw.lang = l.id;
+      if (!raw.title) raw.title = base;
+    }
   }
   if (raw.lang === "auto" || raw.lang === "") delete raw.lang;
+  assertContentSize(raw.content);
 
   const parsed = createPasteSchema.safeParse(raw);
   if (!parsed.success) throw new HttpError(400, "invalid", firstIssue(parsed.error));
@@ -67,6 +71,13 @@ export async function createPaste(raw: Record<string, unknown>): Promise<Created
   if (!record) throw new HttpError(500, "id_collision", "could not allocate an id, try again");
   background(() => store.incrStat("created"));
   return { paste: toPublic(record, 0), editToken };
+}
+
+/** Oversized content is a 413, checked before schema validation so the code is stable. */
+function assertContentSize(content: unknown): void {
+  if (typeof content === "string" && byteLength(content) > LIMITS.maxBytes) {
+    throw new HttpError(413, "too_large", `content exceeds ${LIMITS.maxBytes} bytes`);
+  }
 }
 
 export function assertId(id: string): void {
@@ -124,6 +135,7 @@ async function authorize(id: string, token: string | undefined): Promise<PasteRe
 
 export async function updatePaste(id: string, token: string | undefined, raw: Record<string, unknown>): Promise<PublicPaste> {
   const record = await authorize(id, token);
+  assertContentSize(raw.content);
   const parsed = updatePasteSchema.safeParse(raw);
   if (!parsed.success) throw new HttpError(400, "invalid", firstIssue(parsed.error));
   const input = parsed.data;
@@ -165,9 +177,14 @@ export async function deletePaste(id: string, token: string | undefined): Promis
   await getStore().delete(id);
 }
 
-/** Reporters are stored as a salted, truncated hash so repeat reports can be correlated without keeping IPs. */
+/**
+ * Reporters are stored as a salted, truncated hash so repeat reports can be correlated without
+ * keeping IPs. Without a secret to salt with, nothing about the reporter is stored at all.
+ */
 async function reporterId(ip: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${env.adminToken ?? ""}|reporter|${ip}`));
+  const salt = process.env.REPORT_SALT || env.adminToken || env.redisToken;
+  if (!salt) return "anonymous";
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${salt}|reporter|${ip}`));
   return Array.from(new Uint8Array(digest).slice(0, 8), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -186,6 +203,7 @@ export async function reportPaste(id: string, raw: Record<string, unknown>, ip: 
     background(async () => {
       const res = await fetch(webhook, {
         method: "POST",
+        signal: AbortSignal.timeout(5000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: `Paste reported: ${id} (report #${count})\n${fenced}`,

@@ -21,7 +21,8 @@ import { Kbd } from "@/components/ui/kbd";
 import { CodeBlock } from "./code-block";
 import { MarkdownView } from "./markdown-view";
 import { ShareDialog } from "./share-dialog";
-import { Editor, type EditTarget } from "@/components/editor/editor";
+import { Editor, type EditTarget, type SavedPaste } from "@/components/editor/editor";
+import { copyToClipboard } from "@/lib/clipboard";
 import { stashFork } from "@/components/editor/new-paste";
 import { cn } from "@/lib/cn";
 
@@ -62,6 +63,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
   const [reportReason, setReportReason] = useState("");
   const [tokenPrompt, setTokenPrompt] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
+  const [tokenIntent, setTokenIntent] = useState<"edit" | "delete">("edit");
 
   const mounted = useMounted();
   const local = useLocalPaste(paste.id);
@@ -73,7 +75,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
   const autoKey = useMemo(() => {
     if (!mounted) return undefined;
     const hash = window.location.hash.replace(/^#/, "");
-    if (hash && !/^L\d+/.test(hash)) return hash;
+    if (hash && !/^L\d+(?:-L?\d+)?$/.test(hash)) return hash;
     return local?.key;
   }, [mounted, local?.key]);
 
@@ -129,6 +131,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
     try {
       const p = await api.read(paste.id);
       setBurned(true);
+      forgetPaste(paste.id);
       if (p.enc) {
         setPendingCipher({ content: p.content, enc: p.enc });
         if (p.enc.kdf === "fragment" && autoKey) await decrypt({ content: p.content, enc: p.enc }, { fragment: autoKey });
@@ -152,7 +155,10 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
 
   const copy = useCallback(async () => {
     if (!revealed) return;
-    await navigator.clipboard.writeText(revealed.content);
+    if (!(await copyToClipboard(revealed.content))) {
+      push("error", "Copy failed — select the text and copy it manually");
+      return;
+    }
     setCopied(true);
     push("success", "Copied to clipboard");
     setTimeout(() => setCopied(false), 1500);
@@ -166,19 +172,42 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
 
   const toggleWrap = useCallback(() => setPrefs({ wrap: !wrap }), [wrap]);
 
+  /** A rejected token is forgotten so the prompt can ask again. */
+  const rejectToken = useCallback(
+    (intent: "edit" | "delete") => {
+      updateLocalPaste(paste.id, { editToken: undefined });
+      setTokenIntent(intent);
+      setEditing(false);
+      setConfirmDelete(false);
+      setTokenPrompt(true);
+      push("error", "That edit token was rejected — enter it again");
+    },
+    [paste.id, push],
+  );
+
   const startEdit = useCallback(() => {
     const token = getLocalPaste(paste.id)?.editToken;
     if (!token) {
+      setTokenIntent("edit");
       setTokenPrompt(true);
       return;
     }
     setEditing(true);
   }, [paste.id]);
 
+  const askDelete = useCallback(() => {
+    if (getLocalPaste(paste.id)?.editToken) setConfirmDelete(true);
+    else {
+      setTokenIntent("delete");
+      setTokenPrompt(true);
+    }
+  }, [paste.id]);
+
   const remove = async () => {
     const token = getLocalPaste(paste.id)?.editToken;
     if (!token) {
       setConfirmDelete(false);
+      setTokenIntent("delete");
       setTokenPrompt(true);
       return;
     }
@@ -189,8 +218,9 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       push("success", "Paste deleted");
       router.push("/");
     } catch (e) {
-      push("error", e instanceof ApiError ? e.message : "could not delete");
       setBusy(false);
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) return rejectToken("delete");
+      push("error", e instanceof ApiError ? e.message : "could not delete");
     }
   };
 
@@ -226,7 +256,8 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       });
     setTokenPrompt(false);
     setTokenInput("");
-    setEditing(true);
+    if (tokenIntent === "delete") setConfirmDelete(true);
+    else setEditing(true);
   };
 
   useHotkeys(
@@ -267,11 +298,14 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       <Editor
         edit={target}
         onCancel={() => setEditing(false)}
-        onSaved={() => {
+        onAuthError={() => rejectToken("edit")}
+        onSaved={(saved: SavedPaste) => {
           setEditing(false);
           if (revealed.enc) {
-            // we hold the plaintext; the server only has ciphertext — refresh our own state
-            router.refresh();
+            // The server only holds fresh ciphertext; we already have the plaintext, so update in place.
+            setRevealed({ content: saved.content, title: saved.title, lang: saved.lang, enc: saved.enc ?? revealed.enc, secret: revealed.secret });
+            setLines(saved.content.split("\n").map(escapeHtml));
+            void highlight(saved.content, saved.lang);
           } else {
             router.refresh();
           }
@@ -295,10 +329,18 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
               <span className="flex items-center gap-1">
                 <FileCode2 className="size-3" aria-hidden /> {paste.enc && !revealed ? "encrypted" : langLabel}
               </span>
-              <span title={new Date(paste.created).toLocaleString()}>{formatRelative(paste.created)}</span>
-              <span>{paste.expires ? `expires ${formatRelative(paste.expires)}` : "never expires"}</span>
+              <time dateTime={new Date(paste.created).toISOString()} title={mounted ? new Date(paste.created).toLocaleString() : undefined} suppressHydrationWarning>
+                {mounted ? formatRelative(paste.created) : isoMinute(paste.created)}
+              </time>
+              {paste.expires ? (
+                <time dateTime={new Date(paste.expires).toISOString()} suppressHydrationWarning>
+                  {mounted ? `expires ${formatRelative(paste.expires)}` : `expires ${isoMinute(paste.expires)}`}
+                </time>
+              ) : (
+                <span>never expires</span>
+              )}
               <span className="flex items-center gap-1">
-                <Eye className="size-3" aria-hidden /> {paste.views.toLocaleString()} {paste.views === 1 ? "view" : "views"}
+                <Eye className="size-3" aria-hidden /> {paste.views.toLocaleString("en-US")} {paste.views === 1 ? "view" : "views"}
               </span>
               <span>{sizeLabel}</span>
               {paste.enc && <span>end-to-end encrypted</span>}
@@ -306,7 +348,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button onClick={copy} disabled={!revealed} title="Copy (c)">
+            <Button onClick={copy} disabled={!revealed} title="Copy (c)" aria-label="Copy">
               {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
               Copy
             </Button>
@@ -316,33 +358,35 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
               </a>
             )}
             {!paste.enc && !paste.burn && (
-              <a href={`/${paste.id}/raw?dl=1`} className={buttonClass()} title="Download">
-                <Download className="size-3.5" /> <span className="hidden sm:inline">Download</span>
+              <a href={`/${paste.id}/raw?dl=1`} className={buttonClass()} title="Download" aria-label="Download">
+                <Download className="size-3.5" /> <span className="sr-only sm:not-sr-only">Download</span>
               </a>
             )}
             {revealed && paste.enc && !paste.burn && (
-              <Button onClick={() => downloadText(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`)} title="Download the decrypted text">
-                <Download className="size-3.5" /> <span className="hidden sm:inline">Download</span>
+              <Button onClick={() => downloadText(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`)} title="Download the decrypted text" aria-label="Download">
+                <Download className="size-3.5" /> <span className="sr-only sm:not-sr-only">Download</span>
               </Button>
             )}
             {revealed && paste.burn && (
-              <Button onClick={() => downloadText(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`)} title="Download a copy">
-                <Download className="size-3.5" /> <span className="hidden sm:inline">Download</span>
-              </Button>
-            )}
-            <Button onClick={() => setShare(true)} title="Share">
-              <Share2 className="size-3.5" /> <span className="hidden sm:inline">Share</span>
-            </Button>
-            <Button onClick={fork} disabled={!revealed} title="Fork into a new paste (f)">
-              <GitFork className="size-3.5" /> <span className="hidden sm:inline">Fork</span>
-            </Button>
-            {!paste.burn && (
-              <Button onClick={startEdit} disabled={!revealed} title={hasToken ? "Edit (e)" : "Edit — needs the edit token"}>
-                <Pencil className="size-3.5" /> <span className="hidden sm:inline">Edit</span>
+              <Button onClick={() => downloadText(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`)} title="Download a copy" aria-label="Download">
+                <Download className="size-3.5" /> <span className="sr-only sm:not-sr-only">Download</span>
               </Button>
             )}
             {!burned && (
-              <IconButton label={hasToken ? "Delete" : "Delete — needs the edit token"} variant="danger" onClick={() => (hasToken ? setConfirmDelete(true) : setTokenPrompt(true))}>
+              <Button onClick={() => setShare(true)} title="Share" aria-label="Share">
+                <Share2 className="size-3.5" /> <span className="sr-only sm:not-sr-only">Share</span>
+              </Button>
+            )}
+            <Button onClick={fork} disabled={!revealed} title="Fork into a new paste (f)" aria-label="Fork">
+              <GitFork className="size-3.5" /> <span className="sr-only sm:not-sr-only">Fork</span>
+            </Button>
+            {!paste.burn && (
+              <Button onClick={startEdit} disabled={!revealed} title={hasToken ? "Edit (e)" : "Edit — needs the edit token"} aria-label="Edit">
+                <Pencil className="size-3.5" /> <span className="sr-only sm:not-sr-only">Edit</span>
+              </Button>
+            )}
+            {!burned && (
+              <IconButton label="Delete" title={hasToken ? "Delete" : "Delete — needs the edit token"} variant="danger" onClick={askDelete}>
                 <Trash2 className="size-4" />
               </IconButton>
             )}
@@ -354,11 +398,11 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       {revealed && (
         <div className="mb-2 flex items-center gap-1.5">
           {isMarkdown && (
-            <div className="flex rounded-md border border-border p-0.5">
-              <button type="button" onClick={() => setPreview(true)} className={cn("rounded px-2 py-0.5 text-[12px]", preview ? "bg-surface-2 text-fg" : "text-fg-muted hover:text-fg")}>
+            <div role="group" aria-label="View" className="flex rounded-md border border-border p-0.5">
+              <button type="button" aria-pressed={preview} onClick={() => setPreview(true)} className={cn("rounded px-2 py-0.5 text-[12px]", preview ? "bg-surface-2 text-fg" : "text-fg-muted hover:text-fg")}>
                 Preview
               </button>
-              <button type="button" onClick={() => setPreview(false)} className={cn("rounded px-2 py-0.5 text-[12px]", !preview ? "bg-surface-2 text-fg" : "text-fg-muted hover:text-fg")}>
+              <button type="button" aria-pressed={!preview} onClick={() => setPreview(false)} className={cn("rounded px-2 py-0.5 text-[12px]", !preview ? "bg-surface-2 text-fg" : "text-fg-muted hover:text-fg")}>
                 Source
               </button>
             </div>
@@ -375,7 +419,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
             </button>
           )}
           <span className="ml-auto hidden text-[11px] text-fg-faint sm:flex sm:items-center sm:gap-1">
-            click a line number to link it · <Kbd>shift</Kbd> click for a range
+            {paste.enc ? "click a line number to select it" : "click a line number to link it"} · <Kbd>shift</Kbd> click for a range
           </span>
         </div>
       )}
@@ -398,9 +442,10 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
           icon={<Lock className="size-5 text-fg-muted" />}
           title={needsSecret === "password" ? "This paste is protected with a password" : "This paste is encrypted"}
           body={
-            needsSecret === "password"
-              ? "It was encrypted in the sender&apos;s browser. Enter the password to decrypt it here — nothing is sent to the server."
-              : "The decryption key is the part of the link after #. Paste the full link or just the key."
+            (needsSecret === "password"
+              ? "It was encrypted in the sender’s browser. Enter the password to decrypt it here — nothing is sent to the server."
+              : "The decryption key is the part of the link after #. Paste the full link or just the key.") +
+            (burned ? " This paste has already been removed from the server — don’t reload before decrypting." : "")
           }
           action={
             <form
@@ -415,6 +460,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
                 value={secretInput}
                 onChange={(e) => setSecretInput(e.target.value)}
                 placeholder={needsSecret === "password" ? "Password" : "Key"}
+                aria-label={needsSecret === "password" ? "Password" : "Decryption key"}
                 autoFocus
                 className="h-8 min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 text-[13px]"
               />
@@ -430,20 +476,22 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       ) : isMarkdown && preview ? (
         <MarkdownView source={revealed.content} />
       ) : (
-        <CodeBlock lines={lines ?? revealed.content.split("\n").map(escapeHtml)} wrap={wrap} />
+        <CodeBlock lines={lines ?? revealed.content.split("\n").map(escapeHtml)} wrap={wrap} linkable={!paste.enc} />
       )}
 
       {/* Footer row */}
       {!embed && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3 text-[12px] text-fg-faint">
           <span className="font-mono">{paste.id}</span>
-          {revealed && <span>{revealed.content.split("\n").length.toLocaleString()} lines</span>}
+          {revealed && <span>{revealed.content.split("\n").length.toLocaleString("en-US")} lines</span>}
           <span className="hidden sm:inline">
             <Kbd>c</Kbd> copy · <Kbd>e</Kbd> edit · <Kbd>f</Kbd> fork · <Kbd>w</Kbd> wrap · <Kbd>n</Kbd> new
           </span>
-          <button type="button" onClick={() => setReport(true)} className="ml-auto flex items-center gap-1 hover:text-danger">
-            <Flag className="size-3" /> Report
-          </button>
+          {!burned && (
+            <button type="button" onClick={() => setReport(true)} className="ml-auto flex items-center gap-1 hover:text-danger">
+              <Flag className="size-3" /> Report
+            </button>
+          )}
         </div>
       )}
       {embed && (
@@ -456,7 +504,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       )}
 
       {/* Dialogs */}
-      <ShareDialog open={share} onClose={() => setShare(false)} url={url} rawUrl={rawUrl} encrypted={!!paste.enc} />
+      <ShareDialog open={share} onClose={() => setShare(false)} url={url} rawUrl={paste.burn ? undefined : rawUrl} encrypted={!!paste.enc} />
 
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete this paste?">
         <p className="text-[13px] text-fg-muted">This removes it from the server immediately. Links to it will stop working.</p>
@@ -479,7 +527,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
             saveToken();
           }}
         >
-          <input value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder="Edit token" autoFocus className="h-8 min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 font-mono text-[12px]" />
+          <input value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder="Edit token" aria-label="Edit token" autoFocus className="h-8 min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 font-mono text-[12px]" />
           <Button type="submit" variant="primary" disabled={!tokenInput.trim()}>
             Continue
           </Button>
@@ -494,6 +542,8 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
           rows={3}
           maxLength={500}
           placeholder="Reason"
+          aria-label="Report reason"
+          autoFocus
           className="mt-3 w-full rounded-md border border-border bg-bg px-2.5 py-2 text-[13px]"
         />
         <div className="mt-3 flex justify-end gap-2">
@@ -505,6 +555,11 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       </Dialog>
     </div>
   );
+}
+
+/** Deterministic timestamp for server rendering (no locale, no "ago" drift). */
+function isoMinute(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 }
 
 /** Client-side download for content the server no longer has (burned) or cannot read (encrypted). */

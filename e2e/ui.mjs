@@ -21,6 +21,7 @@ async function setSwitch(pg, label, on) {
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: "light" });
 const page = await ctx.newPage();
+page.on("dialog", (d) => d.accept());
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 page.on("console", (m) => m.type() === "error" && !/404/.test(m.text()) && errors.push(m.text()));
@@ -74,7 +75,7 @@ check("edit saved and re-rendered", (await page.locator("table").innerText()).in
 
 // your pastes menu
 await page.click('button[aria-label="Your pastes"]');
-check("local pastes menu lists paste", (await page.locator('[role=menu]').innerText()).includes("main.go"));
+check("local pastes menu lists paste", (await page.locator('#your-pastes').innerText()).includes("main.go"));
 await page.keyboard.press("Escape");
 
 // ---- Markdown

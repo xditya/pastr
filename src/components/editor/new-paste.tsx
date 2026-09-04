@@ -27,17 +27,15 @@ function readStash(): string | null {
   return stash;
 }
 
-/** Home page editor; picks up a "fork" handed over from a paste view via sessionStorage. */
-export function NewPaste() {
+/**
+ * Home page editor. The form is server-rendered so it works without JavaScript;
+ * a "fork" handed over via sessionStorage remounts it with the forked content.
+ */
+export function NewPaste({ maxBytes }: { maxBytes: number }) {
   const raw = useSyncExternalStore(
     () => () => {},
     readStash,
     () => null,
-  );
-  const mounted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
   );
   useEffect(() => () => void (stash = undefined), []);
 
@@ -50,7 +48,5 @@ export function NewPaste() {
     }
   }, [raw]);
 
-  // Wait for hydration so a fork doesn't flash an empty textarea first.
-  if (!mounted) return <div className="flex-1" />;
-  return <Editor initial={initial} />;
+  return <Editor key={initial ? "fork" : "new"} initial={initial} maxBytes={maxBytes} />;
 }
