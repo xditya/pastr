@@ -54,11 +54,26 @@ export function options() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-/** Best-effort client IP behind Vercel's proxy. */
+/**
+ * Client IP for rate limiting.
+ * On Vercel the platform rewrites X-Forwarded-For to the real client, so the first entry is trusted.
+ * Elsewhere, TRUSTED_PROXY_HOPS (default 1) says how many proxies appended to the chain; we take the
+ * entry that the outermost trusted proxy saw, so clients cannot spoof their way past the limiter.
+ */
 export function clientIp(req: Request): string {
-  const h = req.headers;
-  const xff = h.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
+  return ipFromHeaders(req.headers);
+}
+
+export function ipFromHeaders(h: Headers): string {
+  const xff = (h.get("x-forwarded-for") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (xff.length) {
+    const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? (process.env.VERCEL ? 0 : 1));
+    if (hops <= 0) return xff[0];
+    return xff[Math.max(0, xff.length - hops)];
+  }
   return h.get("x-real-ip") ?? h.get("cf-connecting-ip") ?? "0.0.0.0";
 }
 
@@ -85,18 +100,46 @@ export function bearerToken(req: Request): string | undefined {
   return undefined;
 }
 
+/** Read the body with a hard byte cap, regardless of Content-Length (chunked uploads included). */
+async function readCapped(req: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared && declared > maxBytes) throw new HttpError(413, "too_large", "request body too large");
+  const reader = req.body?.getReader();
+  if (!reader) return new Uint8Array(0);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new HttpError(413, "too_large", "request body too large");
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
+}
+
 /**
  * Accepts JSON, HTML forms / multipart (curl -F), and raw text bodies so the
  * API is pleasant from a terminal: `curl --data-binary @file host/api/v1/pastes`.
+ * `maxBytes` is the content cap; the wire cap allows for base64 ciphertext and form overhead.
  */
 export async function readBody(req: Request, maxBytes: number): Promise<Record<string, unknown>> {
   const ct = (req.headers.get("content-type") ?? "").toLowerCase();
-  const length = Number(req.headers.get("content-length") ?? 0);
-  if (length && length > maxBytes * 2) throw new HttpError(413, "too_large", "request body too large");
+  const bytes = await readCapped(req, maxBytes * 2 + 64 * 1024);
+  const text = () => new TextDecoder().decode(bytes);
 
   if (ct.includes("application/json")) {
     try {
-      const parsed = (await req.json()) as unknown;
+      const parsed = JSON.parse(text()) as unknown;
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new HttpError(400, "bad_request", "JSON body must be an object");
       }
@@ -107,7 +150,12 @@ export async function readBody(req: Request, maxBytes: number): Promise<Record<s
     }
   }
   if (ct.includes("multipart/form-data")) {
-    const form = await req.formData();
+    let form: FormData;
+    try {
+      form = await new Response(bytes, { headers: { "content-type": req.headers.get("content-type")! } }).formData();
+    } catch {
+      throw new HttpError(400, "bad_request", "invalid multipart body");
+    }
     const out: Record<string, unknown> = {};
     for (const [k, v] of form.entries()) {
       if (typeof v === "string") out[k] = v;
@@ -121,7 +169,7 @@ export async function readBody(req: Request, maxBytes: number): Promise<Record<s
   if (ct.includes("application/x-www-form-urlencoded")) {
     // curl's default content type for --data / --data-binary. If it doesn't look like a form
     // (no `content=` field) treat the whole body as the paste text, like hastebin does.
-    const body = await req.text();
+    const body = text();
     if (/(^|&)(content|data)=/.test(body)) {
       const params = new URLSearchParams(body);
       const out: Record<string, unknown> = {};
@@ -132,7 +180,7 @@ export async function readBody(req: Request, maxBytes: number): Promise<Record<s
     return withQueryOptions(req, { content: body });
   }
   // Raw body (text/plain, application/octet-stream, …): the body is the content.
-  return withQueryOptions(req, { content: await req.text() });
+  return withQueryOptions(req, { content: text() });
 }
 
 /** Query-string options (?lang=go&expires=1d&name=main.go) complement form/raw bodies. */

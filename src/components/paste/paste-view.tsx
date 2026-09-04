@@ -237,9 +237,9 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
         { combo: "e", handler: startEdit },
         { combo: "f", handler: fork },
         { combo: "n", handler: () => router.push("/") },
-        { combo: "r", handler: () => window.open(`/${paste.id}/raw`, "_blank") },
+        ...(!paste.burn && !paste.enc ? [{ combo: "r", handler: () => window.open(`/${paste.id}/raw`, "_blank") }] : []),
       ],
-      [copy, toggleWrap, startEdit, fork, router, paste.id],
+      [copy, toggleWrap, startEdit, fork, router, paste.id, paste.burn, paste.enc],
     ),
   );
 
@@ -310,15 +310,25 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
               {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
               Copy
             </Button>
-            {!paste.enc && (
+            {!paste.enc && !paste.burn && (
               <a href={`/${paste.id}/raw`} target="_blank" rel="noopener" className={buttonClass()} title="Raw (r)">
                 <Link2 className="size-3.5" /> Raw
               </a>
             )}
-            {!paste.enc && (
+            {!paste.enc && !paste.burn && (
               <a href={`/${paste.id}/raw?dl=1`} className={buttonClass()} title="Download">
                 <Download className="size-3.5" /> <span className="hidden sm:inline">Download</span>
               </a>
+            )}
+            {revealed && paste.enc && !paste.burn && (
+              <Button onClick={() => downloadText(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`)} title="Download the decrypted text">
+                <Download className="size-3.5" /> <span className="hidden sm:inline">Download</span>
+              </Button>
+            )}
+            {revealed && paste.burn && (
+              <Button onClick={() => downloadText(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`)} title="Download a copy">
+                <Download className="size-3.5" /> <span className="hidden sm:inline">Download</span>
+              </Button>
             )}
             <Button onClick={() => setShare(true)} title="Share">
               <Share2 className="size-3.5" /> <span className="hidden sm:inline">Share</span>
@@ -331,9 +341,11 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
                 <Pencil className="size-3.5" /> <span className="hidden sm:inline">Edit</span>
               </Button>
             )}
-            <IconButton label={hasToken ? "Delete" : "Delete — needs the edit token"} variant="danger" onClick={() => (hasToken ? setConfirmDelete(true) : setTokenPrompt(true))}>
-              <Trash2 className="size-4" />
-            </IconButton>
+            {!burned && (
+              <IconButton label={hasToken ? "Delete" : "Delete — needs the edit token"} variant="danger" onClick={() => (hasToken ? setConfirmDelete(true) : setTokenPrompt(true))}>
+                <Trash2 className="size-4" />
+              </IconButton>
+            )}
           </div>
         </div>
       )}
@@ -493,6 +505,19 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       </Dialog>
     </div>
   );
+}
+
+/** Client-side download for content the server no longer has (burned) or cannot read (encrypted). */
+function downloadText(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename.replace(/[^\w.\-]+/g, "_");
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function Gate({ icon, title, body, action, error }: { icon: React.ReactNode; title: string; body: string; action: React.ReactNode; error: string | null }) {

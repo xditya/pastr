@@ -1,5 +1,6 @@
 import "server-only";
-import { LIMITS } from "./config";
+import { after } from "next/server";
+import { LIMITS, env } from "./config";
 import { byteLength } from "./bytes";
 import { expiresAt, expirySeconds, normalizeExpiry } from "./expiry";
 import { HttpError } from "./http";
@@ -9,9 +10,18 @@ import { type PasteRecord, type PublicPaste, toPublic } from "./paste";
 import { getStore } from "./store";
 import { hashToken, newEditToken, safeEqual, verifyToken } from "./tokens";
 import { createPasteSchema, firstIssue, reportSchema, updatePasteSchema } from "./validation";
-import { env } from "./config";
 
 export type CreatedPaste = { paste: PublicPaste; editToken: string };
+
+/** Run best-effort work after the response is sent (kept alive on Vercel via `after`). */
+function background(task: () => Promise<unknown>) {
+  try {
+    after(() => task().catch((err) => console.error("[background]", err)));
+  } catch {
+    // Outside a request scope (tests) — just run it.
+    void task().catch((err) => console.error("[background]", err));
+  }
+}
 
 export async function createPaste(raw: Record<string, unknown>): Promise<CreatedPaste> {
   // Filename hint (from multipart uploads or ?name=) fills in lang/title when absent.
@@ -55,7 +65,7 @@ export async function createPaste(raw: Record<string, unknown>): Promise<Created
     if (await store.create(candidate, expirySeconds(expiry))) record = candidate;
   }
   if (!record) throw new HttpError(500, "id_collision", "could not allocate an id, try again");
-  void store.incrStat("created").catch(() => {});
+  background(() => store.incrStat("created"));
   return { paste: toPublic(record, 0), editToken };
 }
 
@@ -68,7 +78,6 @@ export async function readPaste(id: string): Promise<PublicPaste> {
   assertId(id);
   const res = await getStore().read(id);
   if (!res) throw new HttpError(404, "not_found", "this paste doesn't exist, expired, or was burned");
-  void getStore().incrStat("views").catch(() => {});
   return toPublic(res.record, res.views);
 }
 
@@ -88,9 +97,8 @@ export async function viewPaste(id: string): Promise<PageView | null> {
     void _c;
     return { mode: "burn", paste: { ...rest, content: "" } };
   }
-  const res = await store.readNonBurn(id);
+  const res = await store.read(id);
   if (!res) return null;
-  void store.incrStat("views").catch(() => {});
   return { mode: res.record.enc ? "encrypted" : "plain", paste: toPublic(res.record, res.views) };
 }
 
@@ -121,16 +129,26 @@ export async function updatePaste(id: string, token: string | undefined, raw: Re
   const input = parsed.data;
 
   const next: PasteRecord = { ...record };
-  if (input.content !== undefined) {
-    next.content = input.content;
-    next.size = byteLength(input.content);
-  }
-  if (record.enc || input.enc) {
-    // Encrypted pastes: only the ciphertext + iv may change; metadata stays scrubbed.
-    if (input.enc) next.enc = input.enc;
+  if (record.enc) {
+    // Encrypted pastes: new ciphertext must come with fresh encryption metadata (never reuse an IV).
+    if (input.content !== undefined) {
+      if (!input.enc) throw new HttpError(400, "invalid", "encrypted pastes need a new `enc` alongside the ciphertext");
+      if (input.enc.kdf !== record.enc.kdf) throw new HttpError(400, "invalid", "cannot change the key mode of an encrypted paste");
+      if (input.enc.iv === record.enc.iv) throw new HttpError(400, "invalid", "enc.iv must be freshly generated");
+      next.content = input.content;
+      next.size = byteLength(input.content);
+      next.enc = input.enc;
+    } else if (input.enc) {
+      throw new HttpError(400, "invalid", "`enc` can only change together with the content");
+    }
     next.title = undefined;
     next.lang = "text";
   } else {
+    if (input.enc) throw new HttpError(400, "invalid", "cannot encrypt an existing plain paste; create a new one");
+    if (input.content !== undefined) {
+      next.content = input.content;
+      next.size = byteLength(input.content);
+    }
     if (input.title !== undefined) next.title = input.title || undefined;
     if (input.lang !== undefined) next.lang = input.lang;
   }
@@ -147,26 +165,38 @@ export async function deletePaste(id: string, token: string | undefined): Promis
   await getStore().delete(id);
 }
 
+/** Reporters are stored as a salted, truncated hash so repeat reports can be correlated without keeping IPs. */
+async function reporterId(ip: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${env.adminToken ?? ""}|reporter|${ip}`));
+  return Array.from(new Uint8Array(digest).slice(0, 8), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export async function reportPaste(id: string, raw: Record<string, unknown>, ip: string): Promise<{ ok: true; count: number }> {
   assertId(id);
   const parsed = reportSchema.safeParse(raw);
   if (!parsed.success) throw new HttpError(400, "invalid", firstIssue(parsed.error));
   const exists = await getStore().peek(id);
   if (!exists) throw new HttpError(404, "not_found", "paste not found");
-  const count = await getStore().report(id, parsed.data.reason, ip);
+  const reason = parsed.data.reason;
+  const count = await getStore().report(id, reason, await reporterId(ip));
   const webhook = env.reportWebhookUrl;
   if (webhook) {
-    // Discord-compatible payload; other webhooks get the same JSON.
-    void fetch(webhook, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: `Paste reported: ${id} (report #${count})\nReason: ${parsed.data.reason}`,
-        paste: id,
-        reason: parsed.data.reason,
-        count,
-      }),
-    }).catch((err) => console.error("[report] webhook failed", err));
+    // Discord-compatible payload (mentions disabled, reason fenced); other webhooks get the same JSON.
+    const fenced = "```\n" + reason.replace(/```/g, "'''") + "\n```";
+    background(async () => {
+      const res = await fetch(webhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: `Paste reported: ${id} (report #${count})\n${fenced}`,
+          allowed_mentions: { parse: [] },
+          paste: id,
+          reason,
+          count,
+        }),
+      });
+      if (!res.ok) console.error(`[report] webhook responded ${res.status}`);
+    });
   }
   return { ok: true, count };
 }

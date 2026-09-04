@@ -2,6 +2,9 @@ import { ImageResponse } from "next/og";
 import { SITE } from "@/lib/config";
 import { getLang, splitIdAndLang } from "@/lib/langs";
 import { getPeek } from "@/lib/view";
+import { headers } from "next/headers";
+import { enforceRateLimit } from "@/lib/ratelimit";
+import { HttpError, ipFromHeaders } from "@/lib/http";
 
 export const alt = "Paste preview";
 export const size = { width: 1200, height: 630 };
@@ -9,6 +12,12 @@ export const contentType = "image/png";
 
 export default async function Image({ params }: { params: Promise<{ id: string }> }) {
   const { id } = splitIdAndLang((await params).id);
+  try {
+    await enforceRateLimit("read", ipFromHeaders(await headers()));
+  } catch (err) {
+    if (err instanceof HttpError) return new Response(err.message, { status: err.status, headers: err.headers });
+    throw err;
+  }
   const paste = await getPeek(id);
   const hidden = !paste || !!paste.enc || paste.burn;
   const title = !paste ? "Paste not found" : paste.enc ? "Encrypted paste" : paste.burn ? "Burn-after-read paste" : (paste.title ?? `Paste ${id}`);

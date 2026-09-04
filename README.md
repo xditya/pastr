@@ -50,7 +50,7 @@ Built as a successor to [pasty](https://github.com/xditya/pasty).
 | `s:created`, `s:views` | integer | Global counters for `/api/v1/info` |
 | `rl:*` | — | Rate-limit buckets |
 
-A page view costs two Redis commands; a create costs two (rate limit + write). Upstash's free tier (500k commands/month) comfortably covers a personal instance.
+A page view is two REST round trips (a peek pipeline, then one Lua script that reads, counts the view, copies the TTL onto the counter and burns if needed); an API read is one. A create is a rate-limit check plus one write. Upstash's free tier (500k commands/month) comfortably covers a personal instance.
 
 ## Deploy on Vercel
 
@@ -120,10 +120,12 @@ curl --data-binary @file https://your-host/documents
 
 - Edit tokens are 256-bit random values; only their SHA-256 is stored and comparison is constant-time.
 - Encrypted pastes hide title and language too. `/raw` returns ciphertext and an `X-Encrypted: 1` header.
-- `Referrer-Policy: no-referrer` so URL fragments (keys) never leak through links; a strict CSP; `X-Robots-Tag: noindex` on every paste.
-- Per-IP sliding-window rate limits on create, read, mutate and report; 1 MiB content cap; titles capped at 120 characters.
+- `Referrer-Policy: no-referrer` so URL fragments (keys) never leak through links; a nonce-based CSP (`script-src 'self' 'nonce-…' 'strict-dynamic'`); `X-Robots-Tag: noindex` on every paste; framing only allowed for `?embed=1` paste pages.
+- Per-IP sliding-window rate limits on create, read (API, pages and OG images), mutate and report; request bodies are capped while streaming, not just by `Content-Length`; 1 MiB content cap; titles capped at 120 characters.
+- Behind your own reverse proxy set `TRUSTED_PROXY_HOPS` (default 1; Vercel needs nothing) so clients cannot spoof `X-Forwarded-For` past the limiter.
+- Encrypted pastes can only be updated with fresh encryption metadata; reusing an IV is rejected.
 - Burn-after-read uses an atomic Lua script so two readers can never both see the content.
-- Reports are stored and optionally forwarded to a webhook; `ADMIN_TOKEN` lets an operator delete anything.
+- Reports store a salted hash of the reporter's IP (never the IP itself) for 30 days and are optionally forwarded to a webhook with mentions disabled; `ADMIN_TOKEN` lets an operator delete anything.
 
 ## Compared with pasty
 
