@@ -1,6 +1,6 @@
 # pastr
 
-Paste text, get a link, decide when it disappears.
+Paste text, get a link, decide when it disappears. Hosted at [pastr.xditya.me](https://pastr.xditya.me).
 
 pastr is a small pastebin that runs on Vercel and Upstash Redis. It highlights 70 languages, encrypts in the browser when you ask it to, and deletes pastes exactly when they expire. There are no accounts, ads or trackers; your own pastes are remembered in your browser so you can edit or delete them later.
 
