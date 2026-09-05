@@ -58,7 +58,7 @@ pastr main.go --expires 1d      # files (language from the extension)
 pastr clip -E -c                # clipboard → encrypted paste, link copied back
 pastr text "hello there" -b     # literal text, burn after read
 pastr get ${HOST}/AbCd1234#key  # print (and decrypt) a paste
-pastr ls                        # pastes made from this machine
+pastr ls                        # browse your pastes: ↑↓ or click, enter reveals the edit token
 pastr rm AbCd1234               # delete with the locally stored edit token
 pastr token AbCd1234            # show that token, for the site's Edit/Delete prompt`}</Code>
 

@@ -1,6 +1,6 @@
 {
   "name": "@xditya/pastr",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Paste from the terminal to a pastr instance: pipe, files, clipboard, with optional end-to-end encryption.",
   "type": "module",
   "bin": {

@@ -12,7 +12,7 @@ pastr clip -E -c                # clipboard, encrypted in the terminal, link cop
 pastr shot.png                  # images (png/jpeg/gif/webp, up to 700 KB); clip also takes a copied image
 pastr text "hello there" -b     # literal text, burn after read
 pastr get https://host/AbCd1234#key
-pastr ls                        # what you pasted from this machine
+pastr ls                        # browse what you pasted here: ↑↓ or click a row, enter reveals the edit token, again copies it
 pastr rm AbCd1234               # delete (uses the locally stored edit token)
 pastr token AbCd1234            # show that token, for the site's Edit/Delete prompt
 ```

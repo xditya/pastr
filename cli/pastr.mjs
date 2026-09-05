@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs, styleText } from "node:util";
 import { createInterface } from "node:readline";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 const NAME = "pastr";
 const DEFAULT_HOST = "https://pastr.xditya.me";
 
@@ -378,7 +378,7 @@ Usage
   ${NAME} clip [options]              paste the clipboard (text or an image)
   ${NAME} text [options] <words ...>  paste literal text
   ${NAME} get <id|url> [--json]       print a paste (decrypts when the URL carries a #key)
-  ${NAME} ls                          pastes created from this machine
+  ${NAME} ls [--json]                 browse pastes made here: arrows or click, enter reveals the edit token
   ${NAME} rm <id|url>                 delete a paste created from this machine
   ${NAME} token <id|url>              print the edit token (paste it into the site's Edit/Delete prompt)
   ${NAME} config [host <url>]         show or set the default host

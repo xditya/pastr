@@ -61,7 +61,7 @@ pastr main.go -e 1d            # a file, language from the extension
 pastr clip -E -c               # clipboard, encrypted, link copied back
 pastr text "hello" -b          # burn after read
 pastr get URL#key              # print, decrypting if needed
-pastr ls                       # what you pasted from this machine
+pastr ls                       # browse your pastes: ↑↓ or click, enter reveals the edit token, again copies it
 pastr rm ID                    # delete with the locally stored edit token
 pastr token ID                 # show that token, for the site's Edit/Delete prompt
 ```
