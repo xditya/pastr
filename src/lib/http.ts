@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { langFromFilename, langFromMime } from "./langs";
 
 export class HttpError extends Error {
   constructor(
@@ -32,7 +33,7 @@ export function json<T>(data: T, init: ResponseInit & { headers?: Record<string,
   });
 }
 
-export function text(body: string, init: ResponseInit & { headers?: Record<string, string> } = {}) {
+export function text(body: BodyInit, init: ResponseInit & { headers?: Record<string, string> } = {}) {
   return new NextResponse(body, {
     ...init,
     headers: {
@@ -178,12 +179,18 @@ export async function readBody(req: Request, maxBytes: number): Promise<Record<s
     for (const [k, v] of form.entries()) {
       if (typeof v === "string") out[k] = v;
       else {
-        out[k] = await v.text();
+        const img = langFromMime(v.type) ?? langFromFilename(v.name ?? "");
+        out[k] = img?.mime ? Buffer.from(await v.arrayBuffer()).toString("base64") : await v.text();
+        if (img?.mime) out.lang = img.id;
         if (v.name && v.name !== "-" && !out.filename) out.filename = v.name;
       }
     }
     return withQueryOptions(req, normalizeFields(out));
   }
+  // Binary image body (curl --data-binary @shot.png with an image content type, or ?name=shot.png).
+  const url = new URL(req.url);
+  const img = langFromMime(ct) ?? langFromFilename(url.searchParams.get("name") ?? url.searchParams.get("filename") ?? "");
+  if (img?.mime) return withQueryOptions(req, { content: Buffer.from(bytes).toString("base64"), lang: img.id });
   if (ct.includes("application/x-www-form-urlencoded")) {
     // curl's default content type for --data / --data-binary. If it doesn't look like a form
     // (no `content=` field) treat the whole body as the paste text, like hastebin does.

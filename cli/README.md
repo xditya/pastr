@@ -9,6 +9,7 @@ pastr config host https://your-pastr.example
 ls -la | pastr                  # stdin → link
 pastr main.go --expires 1d      # file (language from the extension)
 pastr clip -E -c                # clipboard, encrypted in the terminal, link copied back
+pastr shot.png                  # images (png/jpeg/gif/webp, up to 700 KB); clip also takes a copied image
 pastr text "hello there" -b     # literal text, burn after read
 pastr get https://host/AbCd1234#key
 pastr ls                        # what you pasted from this machine

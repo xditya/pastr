@@ -10,7 +10,7 @@ import { decryptEnvelope } from "@/lib/crypto";
 import { highlightLinesClient } from "@/lib/highlight-client";
 import { escapeHtml } from "@/lib/highlight-shared";
 import { formatRelative } from "@/lib/expiry";
-import { getLang, LANGS } from "@/lib/langs";
+import { getLang, imageMime, LANGS } from "@/lib/langs";
 import { forgetPaste, getLocalPaste, rememberPaste, setPrefs, updateLocalPaste } from "@/lib/local";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useLocalPaste, useMounted, usePrefs } from "@/hooks/use-local";
@@ -91,6 +91,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
 
   // Client-side highlight whenever we hold plaintext the server didn't render.
   const highlight = useCallback(async (content: string, lang: string) => {
+    if (imageMime(lang)) return;
     const res = await highlightLinesClient(content, lang);
     setLines(res.lines);
   }, []);
@@ -154,7 +155,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
   };
 
   const copy = useCallback(async () => {
-    if (!revealed) return;
+    if (!revealed || imageMime(revealed.lang)) return;
     if (!(await copyToClipboard(revealed.content))) {
       push("error", "Copy failed — select the text and copy it manually");
       return;
@@ -277,6 +278,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
   const lang = revealed?.lang ?? paste.lang;
   const langLabel = getLang(lang)?.label ?? LANGS[0].label;
   const isMarkdown = lang === "markdown";
+  const image = imageMime(lang);
   const url = `${origin}/${paste.id}${!paste.enc && lang !== "text" ? `.${lang}` : ""}${revealed?.secret && "fragment" in revealed.secret ? `#${revealed.secret.fragment}` : ""}`;
   const rawUrl = `${origin}/${paste.id}/raw`;
   const title = revealed?.title ?? paste.title;
@@ -363,10 +365,12 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button onClick={copy} disabled={!revealed} title="Copy (c)" aria-label="Copy">
-              {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
-              Copy
-            </Button>
+            {!image && (
+              <Button onClick={copy} disabled={!revealed} title="Copy (c)" aria-label="Copy">
+                {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+                Copy
+              </Button>
+            )}
             {!paste.enc && !paste.burn && (
               <a href={`/${paste.id}/raw`} target="_blank" rel="noopener" className={buttonClass()} title="Raw (r)">
                 <Link2 className="size-3.5" /> Raw
@@ -377,13 +381,8 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
                 <Download className="size-3.5" /> <span className="sr-only sm:not-sr-only">Download</span>
               </a>
             )}
-            {revealed && paste.enc && !paste.burn && (
-              <Button onClick={() => downloadText(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`)} title="Download the decrypted text" aria-label="Download">
-                <Download className="size-3.5" /> <span className="sr-only sm:not-sr-only">Download</span>
-              </Button>
-            )}
-            {revealed && paste.burn && (
-              <Button onClick={() => downloadText(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`)} title="Download a copy" aria-label="Download">
+            {revealed && (paste.enc || paste.burn) && (
+              <Button onClick={() => downloadContent(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`, image)} title="Download a copy" aria-label="Download">
                 <Download className="size-3.5" /> <span className="sr-only sm:not-sr-only">Download</span>
               </Button>
             )}
@@ -410,7 +409,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       )}
 
       {/* View toolbar */}
-      {revealed && (
+      {revealed && !image && (
         <div className="mb-2 flex items-center gap-1.5">
           {isMarkdown && (
             <div role="group" aria-label="View" className="flex rounded-md border border-border p-0.5">
@@ -488,6 +487,11 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
         />
       ) : !revealed ? (
         <div className="flex flex-1 items-center justify-center py-20 text-[13px] text-fg-muted">{busy ? "Decrypting…" : "Loading…"}</div>
+      ) : image ? (
+        <div className="flex flex-1 items-start justify-center rounded-lg border border-border bg-code-bg p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element -- data URL, unknown dimensions */}
+          <img src={`data:${image};base64,${revealed.content}`} alt={title ?? paste.id} className="max-h-[80vh] max-w-full rounded" />
+        </div>
       ) : isMarkdown && preview ? (
         <MarkdownView source={revealed.content} />
       ) : (
@@ -498,7 +502,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       {!embed && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3 text-[12px] text-fg-faint">
           <span className="font-mono">{paste.id}</span>
-          {revealed && <span>{revealed.content.split("\n").length.toLocaleString("en-US")} lines</span>}
+          {revealed && !image && <span>{revealed.content.split("\n").length.toLocaleString("en-US")} lines</span>}
           <span className="hidden sm:inline">
             <Kbd>c</Kbd> copy · <Kbd>e</Kbd> edit · <Kbd>f</Kbd> fork · <Kbd>w</Kbd> wrap · <Kbd>n</Kbd> new
           </span>
@@ -578,8 +582,8 @@ function isoMinute(ms: number): string {
 }
 
 /** Client-side download for content the server no longer has (burned) or cannot read (encrypted). */
-function downloadText(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+function downloadContent(content: string, filename: string, mime?: string) {
+  const blob = mime ? new Blob([Uint8Array.from(atob(content), (c) => c.charCodeAt(0))], { type: mime }) : new Blob([content], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

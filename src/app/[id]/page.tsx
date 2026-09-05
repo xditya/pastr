@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { SITE } from "@/lib/config";
-import { getLang, splitIdAndLang } from "@/lib/langs";
+import { getLang, imageMime, splitIdAndLang } from "@/lib/langs";
 import { highlightLines } from "@/lib/highlight";
 import { getView } from "@/lib/view";
 import { formatBytes } from "@/lib/bytes";
@@ -31,7 +31,9 @@ async function resolve(props: Props) {
   await limitPageReads();
   const view = await getView(id);
   if (!view) notFound();
-  const override = suffix ? getLang(suffix)?.id : undefined;
+  // A URL suffix picks the highlighter; it cannot turn text into an image or an image into text.
+  const suffixLang = suffix ? getLang(suffix)?.id : undefined;
+  const override = suffixLang && !imageMime(suffixLang) && !imageMime(view.paste.lang) ? suffixLang : undefined;
   return { id, view, override };
 }
 
@@ -49,7 +51,9 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   const title = paste.title ?? (view.mode === "encrypted" ? "Encrypted paste" : view.mode === "burn" ? "Burn-after-read paste" : `Paste ${id}`);
   const description =
     view.mode === "plain"
-      ? paste.content.split("\n").slice(0, 3).join(" ").slice(0, 160) || SITE.description
+      ? imageMime(paste.lang)
+        ? `${getLang(paste.lang)?.label}, ${formatBytes(paste.size)}`
+        : paste.content.split("\n").slice(0, 3).join(" ").slice(0, 160) || SITE.description
       : view.mode === "burn"
         ? "This paste self-destructs after it is viewed once."
         : "This paste is end-to-end encrypted. Only someone with the key can read it.";
@@ -103,7 +107,7 @@ export default async function PastePage(props: Props) {
   const origin = await requestOrigin();
 
   const lang = override ?? view.paste.lang;
-  const highlighted = view.mode === "plain" ? await highlightLines(view.paste.content, lang) : null;
+  const highlighted = view.mode === "plain" && !imageMime(lang) ? await highlightLines(view.paste.content, lang) : null;
 
   // Remount the client view whenever the stored paste changes (e.g. after an edit + router.refresh()).
   const versionKey = `${view.paste.id}:${view.paste.size}:${view.paste.lang}:${view.paste.title ?? ""}:${fnv1a(view.paste.content)}`;

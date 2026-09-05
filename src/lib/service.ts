@@ -1,11 +1,11 @@
 import "server-only";
 import { after } from "next/server";
 import { LIMITS, allowedExpiries, env } from "./config";
-import { byteLength } from "./bytes";
+import { BASE64, base64Bytes, byteLength } from "./bytes";
 import { expiresAt, expirySeconds, normalizeExpiry } from "./expiry";
 import { HttpError } from "./http";
 import { isValidId, newId } from "./ids";
-import { langFromFilename } from "./langs";
+import { imageMime, langFromFilename } from "./langs";
 import { type PasteRecord, type PublicPaste, toPublic } from "./paste";
 import { getStore } from "./store";
 import { hashToken, newEditToken, safeEqual, verifyToken } from "./tokens";
@@ -45,6 +45,7 @@ export async function createPaste(raw: Record<string, unknown>): Promise<Created
     input.title = undefined;
     input.lang = "text";
   }
+  assertImage(input.lang, input.content);
 
   const expiry = normalizeExpiry(input.expires);
   if (!allowedExpiries().includes(expiry)) {
@@ -74,6 +75,13 @@ export async function createPaste(raw: Record<string, unknown>): Promise<Created
   if (!record) throw new HttpError(500, "id_collision", "could not allocate an id, try again");
   background(() => store.incrStat("created"));
   return { paste: toPublic(record, 0), editToken };
+}
+
+/** Image pastes hold base64 of the file (lang names the format): check the shape and the decoded size. */
+function assertImage(lang: string, content: string): void {
+  if (!imageMime(lang)) return;
+  if (!BASE64.test(content)) throw new HttpError(400, "invalid", "image content must be base64");
+  if (base64Bytes(content) > LIMITS.maxImageBytes) throw new HttpError(413, "too_large", `image exceeds ${LIMITS.maxImageBytes} bytes`);
 }
 
 /** Oversized content is a 413, checked before schema validation so the code is stable. */
@@ -166,6 +174,7 @@ export async function updatePaste(id: string, token: string | undefined, raw: Re
     }
     if (input.title !== undefined) next.title = input.title || undefined;
     if (input.lang !== undefined) next.lang = input.lang;
+    assertImage(next.lang, next.content);
   }
   if (next.size > LIMITS.maxBytes) throw new HttpError(413, "too_large", "content too large");
 

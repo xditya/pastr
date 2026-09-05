@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { clientIp, errorResponse, headFromPeek, text } from "@/lib/http";
-import { splitIdAndLang } from "@/lib/langs";
+import { imageMime, splitIdAndLang } from "@/lib/langs";
 import { enforceRateLimit } from "@/lib/ratelimit";
 import { readPaste } from "@/lib/service";
 
@@ -17,7 +17,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = splitIdAndLang((await params).id);
     await enforceRateLimit("read", clientIp(req));
     const paste = await readPaste(id);
-    return text(paste.content, { headers: { "X-Robots-Tag": "noindex" } });
+    const mime = paste.enc ? undefined : imageMime(paste.lang);
+    return text(mime ? Buffer.from(paste.content, "base64") : paste.content, { headers: { "X-Robots-Tag": "noindex", ...(mime ? { "Content-Type": mime } : {}) } });
   } catch (err) {
     return errorResponse(err, true);
   }

@@ -14,6 +14,7 @@ pastr is a small pastebin that runs on Vercel and Upstash Redis. It highlights 7
 - Expiry from 10 minutes to never, enforced by a Redis TTL instead of a cleanup job. Burn-after-read pastes are destroyed the moment someone opens them.
 - Optional end-to-end encryption (AES-256-GCM). The key lives after the `#` in the link or is derived from a password; the server only ever sees ciphertext, including the title and language.
 - A terminal-first API. `curl --data-binary @file host/api/v1/pastes` prints a link. The `pastr` CLI (npm, or a curl-installable shell script) pastes from stdin, files or the clipboard. hastebin clients keep working.
+- Images too: paste a screenshot into the editor, drop a PNG, JPEG, GIF or WebP, or run `pastr shot.png` (`pastr clip` picks up an image on the clipboard). Images are capped at 700 KB and `/raw` serves them with their media type.
 - A warning before you leak something: the editor flags text that looks like an API key, private key, JWT or password.
 - Operator tools: an admin listing of recent and most-reported pastes, abuse reports with a webhook, and an expiry cap.
 
@@ -121,7 +122,7 @@ A page view costs two REST round trips (a peek pipeline, then one Lua script tha
 - Edit tokens are 256-bit random values. Only their SHA-256 is stored, and comparison is constant-time.
 - Encrypted pastes hide the title and language as well as the content. `/raw` returns the ciphertext with an `X-Encrypted: 1` header.
 - `Referrer-Policy: no-referrer` keeps URL fragments (keys) out of outgoing requests. A nonce-based CSP (`script-src 'self' 'nonce-…' 'strict-dynamic'`) is set on every response, every paste carries `X-Robots-Tag: noindex`, and framing is only allowed for `?embed=1` paste pages.
-- Per-IP sliding-window rate limits cover create, read (API, pages and OG images), mutate and report. Request bodies are capped while streaming rather than trusting `Content-Length`; content is capped at 1 MiB and titles at 120 characters.
+- Per-IP sliding-window rate limits cover create, read (API, pages and OG images), mutate and report. Request bodies are capped while streaming rather than trusting `Content-Length`; content is capped at 1 MiB (images at 700 KB before base64) and titles at 120 characters.
 - Encrypted pastes can only be updated with fresh encryption metadata, so an IV is never reused.
 - Burn-after-read runs as one atomic Lua script, so two readers can never both see the content.
 - Reports store a salted hash of the reporter's IP for 30 days, never the IP itself. They can be forwarded to a webhook with mentions disabled. `ADMIN_TOKEN` lets an operator delete anything.

@@ -11,6 +11,8 @@ export type Lang = {
   aliases?: string[];
   /** shiki grammar id; omitted for plain text / markdown-preview-only */
   shiki?: string;
+  /** Set for image "languages": the content is base64 of a file with this media type. */
+  mime?: string;
 };
 
 export const LANGS: Lang[] = [
@@ -85,6 +87,10 @@ export const LANGS: Lang[] = [
   { id: "regexp", label: "RegExp", ext: [], aliases: ["regex"], shiki: "regexp" },
   { id: "http", label: "HTTP", ext: ["http"], shiki: "http" },
   { id: "mermaid", label: "Mermaid", ext: ["mmd"], shiki: "mermaid" },
+  { id: "png", label: "PNG image", ext: ["png"], mime: "image/png" },
+  { id: "jpeg", label: "JPEG image", ext: ["jpg", "jpeg"], aliases: ["jpg"], mime: "image/jpeg" },
+  { id: "gif", label: "GIF image", ext: ["gif"], mime: "image/gif" },
+  { id: "webp", label: "WebP image", ext: ["webp"], mime: "image/webp" },
 ];
 
 const byId = new Map<string, Lang>();
@@ -113,6 +119,16 @@ export function langFromFilename(name: string): Lang | undefined {
   const idx = lower.lastIndexOf(".");
   if (idx === -1) return undefined;
   return byExt.get(lower.slice(idx + 1));
+}
+
+/** Media type when the language is an image format, else undefined. */
+export function imageMime(langId: string | undefined): string | undefined {
+  return getLang(langId)?.mime;
+}
+
+export function langFromMime(mime: string | undefined): Lang | undefined {
+  const m = (mime ?? "").split(";")[0].trim().toLowerCase();
+  return m ? LANGS.find((l) => l.mime === m) : undefined;
 }
 
 export function extensionFor(langId: string): string {

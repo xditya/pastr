@@ -48,6 +48,11 @@ export const LIMITS = {
    * pass the server value down to the editor as a prop.
    */
   maxBytes: bytesFromEnv(process.env.MAX_PASTE_BYTES ?? process.env.NEXT_PUBLIC_MAX_PASTE_BYTES, 1024 * 1024),
+  /**
+   * Decoded size cap for image pastes. Images are stored base64 inside the same record, and the
+   * whole record must fit Upstash's 1 MB request limit on the free tier: 700 KB * 4/3 leaves room.
+   */
+  maxImageBytes: 700 * 1024,
   maxTitle: 120,
   maxReportReason: 500,
   idLength: 8,

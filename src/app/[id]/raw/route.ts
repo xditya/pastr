@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { clientIp, errorResponse, headFromPeek, text } from "@/lib/http";
-import { extensionFor, splitIdAndLang } from "@/lib/langs";
+import { extensionFor, imageMime, splitIdAndLang } from "@/lib/langs";
 import { enforceRateLimit } from "@/lib/ratelimit";
 import { readPaste } from "@/lib/service";
 
@@ -38,8 +38,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         : `${paste.title}.${extensionFor(paste.lang)}`
       : `${paste.id}.${paste.enc ? "enc.txt" : extensionFor(paste.lang)}`;
     const disposition = download ? "attachment" : "inline";
-    return text(paste.content, {
+    // Image pastes are stored base64; serve the bytes with their real media type.
+    const mime = paste.enc ? undefined : imageMime(paste.lang);
+    return text(mime ? Buffer.from(paste.content, "base64") : paste.content, {
       headers: {
+        ...(mime ? { "Content-Type": mime } : {}),
         "Content-Disposition": `${disposition}; filename="${asciiFilename(name)}"; filename*=UTF-8''${encodeURIComponent(utf8Filename(name))}`,
         "X-Content-Type-Options": "nosniff",
         "X-Robots-Tag": "noindex",

@@ -2,12 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
-import { ClipboardPaste, Flame, Lock, Save, ShieldAlert, Upload } from "lucide-react";
+import { ClipboardPaste, Flame, ImageIcon, Lock, Save, ShieldAlert, Upload, X } from "lucide-react";
 import { findSecrets } from "@/lib/secrets";
 import { DEFAULT_EXPIRY, EXPIRIES, LIMITS } from "@/lib/config";
-import { byteLength, formatBytes } from "@/lib/bytes";
+import { base64Bytes, byteLength, formatBytes } from "@/lib/bytes";
 import { detectLang } from "@/lib/detect";
-import { LANGS, langFromFilename } from "@/lib/langs";
+import { LANGS, imageMime, langFromFilename, langFromMime } from "@/lib/langs";
 import { encryptEnvelope, reencryptEnvelope } from "@/lib/crypto";
 import type { EncryptionMeta } from "@/lib/paste";
 import { api, ApiError } from "@/lib/client";
@@ -90,6 +90,8 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
   const bytes = useMemo(() => byteLength(content), [content]);
   const lines = useMemo(() => (content ? content.split("\n").length : 1), [content]);
   const detected = useMemo(() => (lang === "auto" ? detectLang(content) : lang), [lang, content]);
+  /** Set when the content is a base64 image; the "language" then names the format. */
+  const image = imageMime(lang);
   /** What the server will actually store: base64url of the JSON envelope plus the GCM tag when encrypting. */
   const effectiveBytes = useMemo(
     () => (encrypt ? Math.ceil((byteLength(JSON.stringify({ title: title.trim() || undefined, lang: detected, content })) + 16) * (4 / 3)) : bytes),
@@ -97,7 +99,7 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
   );
   const tooLarge = effectiveBytes > maxBytes;
   /** Heuristic scan for credentials so people don't publish keys by accident (never sent anywhere). */
-  const secrets = useMemo(() => (edit?.enc || encrypt ? [] : findSecrets(content)), [content, encrypt, edit?.enc]);
+  const secrets = useMemo(() => (edit?.enc || encrypt || image ? [] : findSecrets(content)), [content, encrypt, edit?.enc, image]);
   const canSave = content.trim().length > 0 && !tooLarge && !saving && (!encrypt || !usePassword || password.length > 0);
   const dirty = content !== (edit?.content ?? initial?.content ?? "") || title !== (edit?.title ?? initial?.title ?? "");
 
@@ -133,6 +135,18 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
 
   const loadFile = useCallback(
     async (file: File) => {
+      const img = langFromMime(file.type) ?? langFromFilename(file.name);
+      if (img?.mime) {
+        if (file.size > LIMITS.maxImageBytes) {
+          push("error", `${file.name} is larger than ${formatBytes(LIMITS.maxImageBytes)}, the limit for images`);
+          return;
+        }
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        setContent(btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join("")));
+        setLang(img.id);
+        if (!title && file.name !== "image.png") setTitle(file.name);
+        return;
+      }
       if (file.size > maxBytes) {
         push("error", `${file.name} is larger than ${formatBytes(maxBytes)}`);
         return;
@@ -175,8 +189,20 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
     if (file) void loadFile(file);
   };
 
+  /** Ctrl+V with an image on the clipboard (screenshots) loads it like a dropped file. */
+  const onPaste = (e: React.ClipboardEvent) => {
+    const file = Array.from(e.clipboardData.files).find((f) => f.type.startsWith("image/"));
+    if (!file) return;
+    e.preventDefault();
+    void loadFile(file);
+  };
+
   const pasteFromClipboard = async () => {
     try {
+      for (const item of (await navigator.clipboard.read?.()) ?? []) {
+        const type = item.types.find((t) => t.startsWith("image/"));
+        if (type) return void loadFile(new File([await item.getType(type)], "image.png", { type }));
+      }
       const text = await navigator.clipboard.readText();
       if (!text) return push("info", "Clipboard is empty");
       setContent((c) => (c ? `${c}\n${text}` : text));
@@ -334,6 +360,15 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
           aria-label="Title"
           className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-[15px] font-medium placeholder:text-fg-faint hover:border-border focus:border-border-strong focus:bg-surface"
         />
+        {image ? (
+          <span className="flex h-8 items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-[13px] text-fg-muted">
+            <ImageIcon className="size-3.5 text-fg-faint" aria-hidden />
+            {LANGS.find((l) => l.id === lang)?.label}
+            <button type="button" onClick={() => { setContent(""); setLang("auto"); }} title="Remove image" aria-label="Remove image" className="rounded p-0.5 hover:bg-surface-2 hover:text-fg">
+              <X className="size-3.5" aria-hidden />
+            </button>
+          </span>
+        ) : (
         <Select name="lang" value={lang} onChange={(e) => setLang(e.target.value)} aria-label="Language" className="w-44">
           <option value="auto">{lang === "auto" && content ? `Auto · ${LANGS.find((l) => l.id === detected)?.label ?? "text"}` : "Auto-detect"}</option>
           <optgroup label="Popular">
@@ -347,13 +382,14 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
             })}
           </optgroup>
           <optgroup label="All languages">
-            {LANGS.filter((l) => !POPULAR.includes(l.id)).map((l) => (
+            {LANGS.filter((l) => !POPULAR.includes(l.id) && !l.mime).map((l) => (
               <option key={l.id} value={l.id}>
                 {l.label}
               </option>
             ))}
           </optgroup>
         </Select>
+        )}
         {!edit && (
           <Select name="expires" value={expiry} onChange={(e) => setExpiry(e.target.value)} aria-label="Expiry" className="w-44">
             {allowedExpiries.map((e) => (
@@ -410,11 +446,11 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
             <ClipboardPaste className="size-3.5" aria-hidden />
             <span className="sr-only sm:not-sr-only">Clipboard</span>
           </Button>
-          <Button type="button" variant="ghost" onClick={() => fileRef.current?.click()} title="Open a text file" aria-label="Open a text file">
+          <Button type="button" variant="ghost" onClick={() => fileRef.current?.click()} title="Open a text file or image" aria-label="Open a text file or image">
             <Upload className="size-3.5" aria-hidden />
             <span className="sr-only sm:not-sr-only">File</span>
           </Button>
-          <input ref={fileRef} type="file" className="hidden" onChange={onFileInput} accept="text/*,.md,.json,.yml,.yaml,.toml,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.kt,.c,.cpp,.h,.cs,.rb,.php,.sh,.sql,.log,.csv,.xml,.diff,.patch" />
+          <input ref={fileRef} type="file" className="hidden" onChange={onFileInput} accept="text/*,image/png,image/jpeg,image/gif,image/webp,.md,.json,.yml,.yaml,.toml,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.kt,.c,.cpp,.h,.cs,.rb,.php,.sh,.sql,.log,.csv,.xml,.diff,.patch" />
           <Button type="submit" variant="primary" disabled={!canSave} loading={saving}>
             <Save className="size-3.5" aria-hidden />
             {edit ? "Save changes" : "Save"}
@@ -439,6 +475,13 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
           dragging && "ring-2 ring-inset ring-accent",
         )}
       >
+        {image ? (
+          <div className="flex flex-1 items-start justify-center p-4">
+            {/* eslint-disable-next-line @next/next/no-img-element -- data URL, unknown dimensions */}
+            <img src={`data:${image};base64,${content}`} alt={title || "Image to paste"} className="max-h-[70vh] max-w-full rounded" />
+          </div>
+        ) : (
+        <>
         <div ref={gutterRef} aria-hidden className="code select-none overflow-hidden border-r border-border bg-surface-2/60 py-3 text-right text-[var(--gutter)]">
           {gutter}
         </div>
@@ -449,14 +492,17 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
           onChange={(e) => setContent(e.target.value)}
           onScroll={syncScroll}
           onKeyDown={handleKeyDown}
+          onPaste={onPaste}
           wrap="off"
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
-          placeholder="Paste or type here. Drop a file anywhere."
+          placeholder="Paste or type here. Drop a file or image anywhere."
           aria-label="Paste content"
           className="editor-textarea min-h-[60vh] flex-1 resize-none bg-transparent px-4 py-3 outline-none placeholder:text-fg-faint"
         />
+        </>
+        )}
         {dragging && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-bg/70 text-[13px] text-fg-muted">
             Drop to load the file
@@ -467,7 +513,9 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
       {/* Status bar */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-3 py-2 font-mono text-[12px] text-fg-faint">
         <span className={cn(tooLarge && "text-danger")}>
-          {lines} {lines === 1 ? "line" : "lines"} · {content.length.toLocaleString("en-US")} chars · {formatBytes(bytes)} of {formatBytes(maxBytes)}
+          {image
+            ? `${LANGS.find((l) => l.id === lang)?.label} · ${formatBytes(base64Bytes(content))} of ${formatBytes(LIMITS.maxImageBytes)}`
+            : `${lines} ${lines === 1 ? "line" : "lines"} · ${content.length.toLocaleString("en-US")} chars · ${formatBytes(bytes)} of ${formatBytes(maxBytes)}`}
           {encrypt && ` (≈${formatBytes(effectiveBytes)} encrypted)`}
           {tooLarge && ` — over the ${formatBytes(maxBytes)} limit`}
         </span>

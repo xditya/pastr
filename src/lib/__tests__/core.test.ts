@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { isValidId, newId, ID_ALPHABET } from "../ids";
 import { hashToken, newEditToken, safeEqual, verifyToken } from "../tokens";
 import { expiresAt, expirySeconds, formatDuration, formatRelative, normalizeExpiry } from "../expiry";
-import { getLang, langFromFilename, normalizeLang, splitIdAndLang, extensionFor } from "../langs";
+import { getLang, imageMime, langFromFilename, langFromMime, normalizeLang, splitIdAndLang, extensionFor } from "../langs";
 import { detectLang } from "../detect";
-import { byteLength, formatBytes } from "../bytes";
+import { BASE64, base64Bytes, byteLength, formatBytes } from "../bytes";
 import { createPasteSchema, updatePasteSchema } from "../validation";
 
 describe("ids", () => {
@@ -94,6 +94,19 @@ describe("bytes", () => {
     expect(byteLength("é")).toBe(2);
     expect(formatBytes(512)).toBe("512 B");
     expect(formatBytes(2048)).toBe("2.0 KB");
+  });
+
+  it("measures and recognises base64 image content", () => {
+    const b64 = Buffer.from("hello").toString("base64"); // aGVsbG8=
+    expect(BASE64.test(b64)).toBe(true);
+    expect(BASE64.test("not base64!")).toBe(false);
+    expect(base64Bytes(b64)).toBe(5);
+    expect(base64Bytes("aGk=")).toBe(2);
+    expect(langFromMime("image/png")?.id).toBe("png");
+    expect(langFromMime("image/jpeg; charset=x")?.id).toBe("jpeg");
+    expect(langFromMime("text/plain")).toBeUndefined();
+    expect(imageMime("webp")).toBe("image/webp");
+    expect(imageMime("typescript")).toBeUndefined();
   });
 });
 

@@ -69,7 +69,10 @@ cat main.go | curl --data-binary @- -H 'Content-Type: text/plain' '${HOST}/api/v
 curl --data-binary @notes.md -H 'Content-Type: text/plain' '${HOST}/api/v1/pastes?lang=markdown&expires=1d&burn'
 
 # A form works too (curl -F) — the filename picks the language
-curl -F 'content=@script.py' -F expires=1h ${HOST}/api/v1/pastes`}</Code>
+curl -F 'content=@script.py' -F expires=1h ${HOST}/api/v1/pastes
+
+# Images (png, jpeg, gif, webp, up to ${formatBytes(LIMITS.maxImageBytes)}) go the same way; /raw serves them back with their media type
+curl --data-binary @shot.png -H 'Content-Type: image/png' '${HOST}/api/v1/pastes?expires=1d'`}</Code>
         <p className="mt-3 text-[13px] text-fg-muted">
           The edit token is returned in the <span className="font-mono">X-Edit-Token</span> header (and in the JSON body). Keep it if you want to change or delete the paste later.
           Terminal clients (curl, wget, httpie) get the URL back as text and errors as <span className="font-mono">error: message (code)</span>; force a format with <span className="font-mono">Accept: application/json</span>, <span className="font-mono">Accept: text/plain</span>, or <span className="font-mono">?plain</span>.
@@ -98,11 +101,12 @@ Content-Type: application/json
 }`}</Code>
         <p className="mt-3 text-[13px] text-fg-muted">
           Bodies may also be <span className="font-mono">multipart/form-data</span>, <span className="font-mono">application/x-www-form-urlencoded</span> or raw text. For raw text, pass options as query parameters (<span className="font-mono">name</span>, <span className="font-mono">lang</span>, <span className="font-mono">expires</span>, <span className="font-mono">burn</span>, <span className="font-mono">title</span>).
+          In JSON, an image is its base64 in <span className="font-mono">content</span> with <span className="font-mono">lang</span> set to <span className="font-mono">png</span>, <span className="font-mono">jpeg</span>, <span className="font-mono">gif</span> or <span className="font-mono">webp</span>; raw and multipart bodies with an image content type or file name are converted for you.
         </p>
 
         <H2 id="read">Read</H2>
         <Code>{`GET  /api/v1/pastes/:id         → JSON (counts a view)
-GET  /:id/raw                   → text/plain (counts a view)
+GET  /:id/raw                   → text/plain, or the image bytes with their media type (counts a view)
 GET  /:id/raw?dl=1              → download with a filename
 GET  /:id.go                    → web view highlighted as Go, whatever the stored language
 HEAD any of the above           → existence check only: never counts a view, never burns
@@ -136,7 +140,7 @@ GET  /raw/:key             → text/plain`}</Code>
 
         <H2 id="limits">Limits &amp; errors</H2>
         <ul className="list-disc space-y-1 pl-5 text-[13px] text-fg-muted">
-          <li>Content up to {formatBytes(LIMITS.maxBytes)}; titles up to {LIMITS.maxTitle} characters.</li>
+          <li>Content up to {formatBytes(LIMITS.maxBytes)}; images up to {formatBytes(LIMITS.maxImageBytes)} before base64; titles up to {LIMITS.maxTitle} characters.</li>
           <li>Rate limits per IP: 20 creates/min, 120 reads/min, 30 edits or deletes/min, 5 reports/10 min. Over the limit you get 429 with a Retry-After header.</li>
           <li>
             Errors are <span className="font-mono">{'{ "error": { "code", "message" } }'}</span> with the matching HTTP status (400 invalid, 401/403 token problems, 404 missing or expired, 413 too large, 429 rate limited).

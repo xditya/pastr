@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 import { SITE } from "@/lib/config";
-import { getLang, splitIdAndLang } from "@/lib/langs";
+import { getLang, imageMime, splitIdAndLang } from "@/lib/langs";
 import { getPeek } from "@/lib/view";
 import { headers } from "next/headers";
 import { enforceRateLimit } from "@/lib/ratelimit";
@@ -22,7 +22,7 @@ export default async function Image({ params }: { params: Promise<{ id: string }
   const hidden = !paste || !!paste.enc || paste.burn;
   const title = !paste ? "Paste not found" : paste.enc ? "Encrypted paste" : paste.burn ? "Burn-after-read paste" : (paste.title ?? `Paste ${id}`);
   const langLabel = paste && !hidden ? (getLang(paste.lang)?.label ?? "Plain text") : "";
-  const preview = paste && !hidden ? paste.content.split("\n").slice(0, 11) : [];
+  const preview = paste && !hidden && !imageMime(paste.lang) ? paste.content.split("\n").slice(0, 11) : [];
 
   return new ImageResponse(
     (

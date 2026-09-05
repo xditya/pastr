@@ -133,10 +133,10 @@ function safeRead(file) {
   }
 }
 
-function tryExec(cmds) {
+function tryExec(cmds, encoding = "utf8") {
   for (const [cmd, args] of cmds) {
     try {
-      return execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 * 1024 * 1024 });
+      return execFileSync(cmd, args, { encoding, stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 * 1024 * 1024 });
     } catch {
       /* try the next one */
     }
@@ -160,6 +160,26 @@ export function readClipboard() {
   const out = tryExec(cmds);
   if (out === null) throw new CliError("could not read the clipboard (install wl-clipboard, xclip or xsel on Linux)");
   return out;
+}
+
+/** PNG bytes of an image on the clipboard (a screenshot, say), or null when the clipboard holds no image. */
+export function readClipboardImage() {
+  const os = platform();
+  const ps = "$i = Get-Clipboard -Format Image; if ($i) { $m = New-Object IO.MemoryStream; $i.Save($m, [Drawing.Imaging.ImageFormat]::Png); [Convert]::ToBase64String($m.ToArray()) }";
+  if (os === "darwin") {
+    // osascript prints the PNG as «data PNGf89504E47...»
+    const hex = tryExec([["osascript", ["-e", "the clipboard as «class PNGf»"]]])?.match(/PNGf([0-9A-Fa-f]+)/)?.[1];
+    return hex ? Buffer.from(hex, "hex") : null;
+  }
+  if (os === "win32" || isWsl()) {
+    const b64 = tryExec([[os === "win32" ? "powershell" : "powershell.exe", ["-NoProfile", "-Command", ps]]])?.trim();
+    return b64 ? Buffer.from(b64, "base64") : null;
+  }
+  const buf = tryExec(
+    [...(process.env.WAYLAND_DISPLAY ? [["wl-paste", ["-t", "image/png"]]] : []), ["xclip", ["-selection", "clipboard", "-t", "image/png", "-o"]]],
+    "buffer",
+  );
+  return buf?.length ? buf : null;
 }
 
 export function writeClipboard(text) {
@@ -225,7 +245,17 @@ const EXT = {
   zsh: "shellscript", ps1: "powershell", bat: "bat", fish: "fish", nix: "nix", sql: "sql", graphql: "graphql", gql: "graphql", prisma: "prisma",
   proto: "proto", xml: "xml", svg: "xml", diff: "diff", patch: "diff", log: "log", csv: "csv", tex: "latex", tf: "terraform", hcl: "terraform",
   ini: "ini", conf: "ini", cfg: "ini", env: "dotenv", mmd: "mermaid", sol: "solidity", http: "http",
+  png: "png", jpg: "jpeg", jpeg: "jpeg", gif: "gif", webp: "webp",
 };
+
+/** Image "languages": the content is the file as base64 and the server caps the decoded size. */
+const IMAGE_LANGS = new Set(["png", "jpeg", "gif", "webp"]);
+const MAX_IMAGE_BYTES = 700 * 1024;
+
+function imageItem(buf, lang, title) {
+  if (buf.length > MAX_IMAGE_BYTES) throw new CliError(`${title} is ${Math.round(buf.length / 1024)} KB; images are limited to ${MAX_IMAGE_BYTES / 1024} KB`);
+  return { content: buf.toString("base64"), lang, title };
+}
 
 export function langFromFilename(name) {
   const lower = name.toLowerCase();
@@ -309,8 +339,8 @@ async function createPaste(host, { content, title, lang, expires, burn, encrypt,
 const HELP = `${NAME} ${VERSION} — paste from the terminal
 
 Usage
-  ${NAME} [options] [file ...]        paste files, or stdin when no file is given
-  ${NAME} clip [options]              paste the clipboard
+  ${NAME} [options] [file ...]        paste files (text, or png/jpeg/gif/webp up to 700 KB), or stdin
+  ${NAME} clip [options]              paste the clipboard (text or an image)
   ${NAME} text [options] <words ...>  paste literal text
   ${NAME} get <id|url> [--json]       print a paste (decrypts when the URL carries a #key)
   ${NAME} ls                          pastes created from this machine
@@ -339,6 +369,7 @@ Examples
   ${NAME} clip -E -c                  # encrypted clipboard paste, URL copied back
   ${NAME} text "hello there" -b       # burn after read
   ${NAME} get https://host/AbCd1234#key > file.txt
+  ${NAME} shot.png -e 1d              # image paste; "get" writes the bytes back
 `;
 
 function fmtRel(ms) {
@@ -401,7 +432,7 @@ export async function main(argv) {
     const host = ref.host ?? resolveHost(o.host);
     const p = await api(host, `/api/v1/pastes/${ref.id}`);
     if (o.json) return out(JSON.stringify(p, null, 2) + "\n");
-    if (!p.enc) return out(p.content);
+    if (!p.enc) return emit(p.content, p.lang);
     let secret;
     if (p.enc.kdf === "fragment") {
       const key = ref.key ?? getHistory().find((h) => h.id === ref.id)?.key;
@@ -411,7 +442,7 @@ export async function main(argv) {
       secret = { password: o.password ?? (await promptHidden("Password: ")) };
     }
     const env = await decryptEnvelope(p.content, p.enc, secret);
-    return out(env.content);
+    return emit(env.content, env.lang);
   }
 
   if (cmd === "rm") {
@@ -431,7 +462,8 @@ export async function main(argv) {
   const password = o["ask-password"] ? await promptHidden("Password: ") : o.password;
   const items = [];
   if (cmd === "clip") {
-    items.push({ content: readClipboard(), title: o.title });
+    const img = readClipboardImage();
+    items.push(img ? imageItem(img, "png", o.title ?? "clipboard.png") : { content: readClipboard(), title: o.title });
   } else if (cmd === "text") {
     if (!rest.length) throw new UsageError("usage: text <words ...>");
     items.push({ content: rest.join(" "), title: o.title });
@@ -441,8 +473,13 @@ export async function main(argv) {
     for (const f of files) {
       if (!existsSync(f)) throw new UsageError(`no such file: ${f}`);
       const buf = readFileSync(f);
-      if (buf.includes(0)) throw new CliError(`${f} looks binary; only text can be pasted`);
-      items.push({ content: buf.toString("utf8"), title: o.title ?? basename(f), lang: o.lang ?? langFromFilename(basename(f)) });
+      const lang = o.lang ?? langFromFilename(basename(f));
+      if (IMAGE_LANGS.has(lang)) {
+        items.push(imageItem(buf, lang, o.title ?? basename(f)));
+        continue;
+      }
+      if (buf.includes(0)) throw new CliError(`${f} looks binary; only text and png/jpeg/gif/webp images can be pasted`);
+      items.push({ content: buf.toString("utf8"), title: o.title ?? basename(f), lang });
     }
   }
 
@@ -470,6 +507,11 @@ export async function main(argv) {
 
 function out(s) {
   process.stdout.write(s);
+}
+
+/** Text goes out as is; image pastes are decoded so `get shot > shot.png` works. */
+function emit(content, lang) {
+  process.stdout.write(IMAGE_LANGS.has(lang) ? Buffer.from(content, "base64") : content);
 }
 
 const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
