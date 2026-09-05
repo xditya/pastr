@@ -11,7 +11,7 @@
 # Options (before or after the command):
 #   -e|--expires 10m|1h|1d|7d|30d|never   -b|--burn   -t|--title <t>   -l|--lang <id>
 #   -c|--copy (copy URL to clipboard)     -o|--open   -r|--raw (print raw URL)   -H|--host <url>
-# Encryption needs the Node version: npm i -g pastr
+# Encryption needs the Node version: npm i -g @xditya/pastr
 set -eu
 
 HOST="${PASTR_HOST:-__HOST__}"

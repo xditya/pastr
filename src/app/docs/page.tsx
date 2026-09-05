@@ -48,7 +48,7 @@ export default async function DocsPage() {
           Paste without opening the site. The Node version supports end-to-end encryption; the shell version needs only <span className="font-mono">curl</span>.
         </p>
         <Code>{`# Node 20+ (npm) — full featured, incl. -E for encryption
-npm install -g pastr
+npm install -g @xditya/pastr
 pastr config host ${HOST}
 
 # No Node? POSIX shell + curl, with this host preconfigured

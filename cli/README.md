@@ -3,7 +3,7 @@
 Paste from the terminal to any [pastr](https://github.com/xditya/pastr) instance, such as [pastr.xditya.me](https://pastr.xditya.me).
 
 ```sh
-npm install -g pastr        # or: npx pastr …
+npm install -g @xditya/pastr        # or: npx @xditya/pastr …
 pastr config host https://your-pastr.example
 
 ls -la | pastr                  # stdin → link
