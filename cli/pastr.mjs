@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs, styleText } from "node:util";
 import { createInterface } from "node:readline";
 
-export const VERSION = "0.4.1";
+export const VERSION = "0.4.2";
 const NAME = "pastr";
 const DEFAULT_HOST = "https://pastr.xditya.me";
 
@@ -650,15 +650,14 @@ export async function main(argv) {
 
   for (const item of items) {
     if (!item.content.trim()) throw new CliError("nothing to paste");
-    const p = await createPaste(host, {
-      content: item.content,
-      title: item.title,
-      lang: item.lang ?? o.lang,
-      expires: o.expires,
-      burn: o.burn,
-      encrypt: o.encrypt,
-      password,
-    });
+    // Progress on stderr while the upload (and PBKDF2 for -p) runs, cleared before the result.
+    if (ERR_TTY) process.stderr.write(styleText("dim", "  uploading…"));
+    let p;
+    try {
+      p = await createPaste(host, { content: item.content, title: item.title, lang: item.lang ?? o.lang, expires: o.expires, burn: o.burn, encrypt: o.encrypt, password });
+    } finally {
+      if (ERR_TTY) process.stderr.write("\r\x1b[2K");
+    }
     const url = o.raw ? p.rawUrl : p.url;
     if (o.json) out(JSON.stringify(p, null, 2) + "\n");
     else out(link(url) + "\n");
