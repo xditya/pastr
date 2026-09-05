@@ -14,6 +14,7 @@ pastr text "hello there" -b     # literal text, burn after read
 pastr get https://host/AbCd1234#key
 pastr ls                        # what you pasted from this machine
 pastr rm AbCd1234               # delete (uses the locally stored edit token)
+pastr token AbCd1234            # show that token, for the site's Edit/Delete prompt
 ```
 
 - Zero dependencies, Node 20+, macOS/Linux/Windows/WSL.

@@ -63,6 +63,7 @@ pastr text "hello" -b          # burn after read
 pastr get URL#key              # print, decrypting if needed
 pastr ls                       # what you pasted from this machine
 pastr rm ID                    # delete with the locally stored edit token
+pastr token ID                 # show that token, for the site's Edit/Delete prompt
 ```
 
 ## API

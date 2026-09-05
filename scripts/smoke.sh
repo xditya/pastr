@@ -6,7 +6,8 @@ J='content-type: application/json'
 A='accept: application/json'
 pass=0; fail=0
 check() { if [ "$1" == "$2" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: $3 — expected [$2] got [$1]"; fi; }
-py() { python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
+PY=$(command -v python3 || command -v python)
+py() { "$PY" -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
 
 R=$(curl -s -H "$J" -d '{"content":"package main\nfunc main(){}","lang":"go","title":"main.go","expires":"1h"}' $BASE/api/v1/pastes)
 ID=$(echo "$R" | py 'd["id"]'); TOK=$(echo "$R" | py 'd["editToken"]')

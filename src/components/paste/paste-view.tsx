@@ -522,7 +522,8 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
 
       <Dialog open={tokenPrompt} onClose={() => setTokenPrompt(false)} title="Edit token needed">
         <p className="text-[13px] text-fg-muted">
-          Editing and deleting need the edit token that was shown when the paste was created (it is remembered automatically in the browser that created it).
+          Editing and deleting need the edit token from when the paste was created. The browser that made it remembers it automatically; for a paste made from the
+          terminal, run <code className="font-mono text-[12px] text-fg">pastr token {paste.id}</code>.
         </p>
         <form
           className="mt-3 flex gap-2"

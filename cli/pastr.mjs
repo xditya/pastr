@@ -11,12 +11,48 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
+import { parseArgs, styleText } from "node:util";
 import { createInterface } from "node:readline";
 
-export const VERSION = "0.2.1";
+export const VERSION = "0.3.0";
 const NAME = "pastr";
 const DEFAULT_HOST = "https://pastr.xditya.me";
+
+// ---------------------------------------------------------------------------
+// Terminal styling: colour only on a TTY, never when piped or under NO_COLOR,
+// so `pastr | pbcopy` and scripts see plain text.
+// ---------------------------------------------------------------------------
+
+const OUT_TTY = !process.env.NO_COLOR && !!process.stdout.isTTY;
+const ERR_TTY = !process.env.NO_COLOR && !!process.stderr.isTTY;
+const paint = (style) => (s) => (OUT_TTY && styleText ? styleText(style, s) : s);
+const bold = paint("bold");
+const dim = paint("dim");
+const cyan = paint("cyan");
+const yellow = paint("yellow");
+const green = paint("green");
+const link = paint(["cyan", "underline"]);
+
+const len = (s) => [...s].length;
+const fit = (s, n) => (len(s) > n ? [...s].slice(0, Math.max(n - 1, 0)).join("") + "…" : s.padEnd(n));
+
+/** Box-drawn table sized to the terminal; column `shrink` gives up characters first, then the widest. */
+export function table(head, rows, styles = [], shrink = -1, width = process.stdout.columns || 120) {
+  const w = head.map((h, i) => Math.max(len(h), ...rows.map((r) => len(r[i]))));
+  let over = w.reduce((a, b) => a + b, 0) + 3 * w.length + 1 - width;
+  while (over > 0) {
+    const i = w[shrink] > 8 ? shrink : w.indexOf(Math.max(...w));
+    if (w[i] <= 8) break;
+    w[i]--;
+    over--;
+  }
+  const rule = (l, m, r) => dim(l + w.map((n) => "─".repeat(n + 2)).join(m) + r);
+  const line = (cells, f) => dim("│ ") + cells.map((c, i) => (f[i] ?? ((s) => s))(fit(c, w[i]))).join(dim(" │ ")) + dim(" │");
+  return [rule("╭", "┬", "╮"), line(head, head.map(() => bold)), rule("├", "┼", "┤"), ...rows.map((r) => line(r, styles)), rule("╰", "┴", "╯")].join("\n") + "\n";
+}
+
+const ok = (msg) => out(`${OUT_TTY ? green("✓ ") : ""}${msg}\n`);
+const note = (msg) => process.stderr.write(ERR_TTY ? styleText("dim", `  ${msg}\n`) : `${msg}\n`);
 
 // ---------------------------------------------------------------------------
 // Config & history
@@ -224,7 +260,7 @@ function promptHidden(question) {
 }
 
 async function readStdin() {
-  if (process.stdin.isTTY) process.stderr.write("Type or paste, then press Ctrl-D:\n");
+  if (process.stdin.isTTY) note(`Type or paste, then press ${platform() === "win32" ? "Ctrl-Z, Enter" : "Ctrl-D"}:`);
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   return Buffer.concat(chunks).toString("utf8");
@@ -334,7 +370,7 @@ async function createPaste(host, { content, title, lang, expires, burn, encrypt,
 // CLI
 // ---------------------------------------------------------------------------
 
-const HELP = `${NAME} ${VERSION} — paste from the terminal
+const HELP = `${NAME} ${VERSION} · paste from the terminal
 
 Usage
   ${NAME} [options] [file ...]        paste files (text, or png/jpeg/gif/webp up to 700 KB), or stdin
@@ -343,6 +379,7 @@ Usage
   ${NAME} get <id|url> [--json]       print a paste (decrypts when the URL carries a #key)
   ${NAME} ls                          pastes created from this machine
   ${NAME} rm <id|url>                 delete a paste created from this machine
+  ${NAME} token <id|url>              print the edit token (paste it into the site's Edit/Delete prompt)
   ${NAME} config [host <url>]         show or set the default host
 
 Options
@@ -369,6 +406,13 @@ Examples
   ${NAME} get https://host/AbCd1234#key > file.txt
   ${NAME} shot.png -e 1d              # image paste; "get" writes the bytes back
 `;
+
+/** Bold section headings, cyan command/flag column, dim trailing comments. */
+const styleHelp = (s) =>
+  s
+    .split("\n")
+    .map((l) => (/^\S/.test(l) ? bold(l) : l.replace(/^(\s+)(\S.*?)(\s{2,}|$)/, (_, a, b, c) => a + cyan(b) + c).replace(/#.*$/, dim)))
+    .join("\n");
 
 function fmtRel(ms) {
   const d = ms - Date.now();
@@ -400,7 +444,7 @@ export async function main(argv) {
     },
   });
 
-  if (o.help) return out(HELP);
+  if (o.help) return out(styleHelp(HELP));
   if (o.version) return out(`${NAME} ${VERSION}\n`);
 
   const [cmd, ...rest] = positionals;
@@ -408,20 +452,30 @@ export async function main(argv) {
   if (cmd === "config") {
     if (rest[0] === "host" && rest[1]) {
       setConfig({ host: rest[1].replace(/\/+$/, "") });
-      return out(`host set to ${rest[1]}\n`);
+      return ok(`host set to ${rest[1]}`);
     }
     const cfg = getConfig();
-    return out(`host: ${process.env.PASTR_HOST || cfg.host || DEFAULT_HOST}\nconfig: ${configDir()}\n`);
+    const source = process.env.PASTR_HOST ? "env PASTR_HOST" : cfg.host ? "config" : "default";
+    return out(`${dim("host   ")} ${link(process.env.PASTR_HOST || cfg.host || DEFAULT_HOST)} ${dim(`(${source})`)}\n${dim("config ")} ${configDir()}\n`);
   }
 
   if (cmd === "ls") {
     const list = getHistory();
-    if (!list.length) return out("no pastes yet\n");
-    for (const p of list) {
-      const flags = [p.encrypted && "enc", p.burn && "burn"].filter(Boolean).join(",");
-      out(`${p.id}  ${(p.title || p.lang || "").padEnd(24).slice(0, 24)}  ${fmtRel(p.created).padEnd(9)}  ${p.expires ? "expires " + fmtRel(p.expires) : "never expires"}${flags ? "  [" + flags + "]" : ""}\n  ${p.url}\n`);
+    if (!list.length) return out(`no pastes yet${OUT_TTY ? dim(` · try: ls -la | ${NAME}`) : ""}\n`);
+    const flags = (p) => [p.encrypted && "enc", p.burn && "burn"].filter(Boolean).join(" ");
+    // Piped: one tab-separated line per paste, ISO dates. TTY: a table sized to the window.
+    if (!OUT_TTY) {
+      for (const p of list) out([p.id, p.title || "", p.lang || "", new Date(p.created).toISOString(), p.expires ? new Date(p.expires).toISOString() : "never", flags(p), p.url].join("\t") + "\n");
+      return;
     }
-    return;
+    const head = ["id", "title", "lang", "created", "expires", "", "url"];
+    // Keys stay out of the table (`get <id>` finds them in history); the piped form has the full URL.
+    const rows = list.map((p) => [p.id, p.title || "", p.lang || "", fmtRel(p.created), p.expires ? fmtRel(p.expires) : "never", flags(p), p.url.split("#")[0]]);
+    // Narrow window: drop the url column (the id is enough for `get`) rather than mangling it.
+    const need = head.reduce((sum, h, i) => sum + 3 + Math.min(i === 1 ? 20 : Infinity, Math.max(len(h), ...rows.map((r) => len(r[i])))), 1);
+    if (need > (process.stdout.columns || 120)) for (const r of [head, ...rows]) r.pop();
+    out(table(head, rows, [cyan, undefined, dim, dim, undefined, yellow, dim], 1));
+    return out(dim(`  ${list.length} ${list.length === 1 ? "paste" : "pastes"} · ${NAME} get <id> · ${NAME} rm <id>\n`));
   }
 
   if (cmd === "get") {
@@ -443,6 +497,15 @@ export async function main(argv) {
     return emit(env.content, env.lang);
   }
 
+  if (cmd === "token") {
+    if (!rest[0]) throw new UsageError("usage: token <id|url>");
+    const { id } = parsePasteRef(rest[0]);
+    const entry = getHistory().find((h) => h.id === id);
+    if (!entry?.editToken) throw new CliError(`no edit token for ${id} on this machine`);
+    if (OUT_TTY) note("Anyone with this token can edit or delete the paste.");
+    return out(entry.editToken + "\n");
+  }
+
   if (cmd === "rm") {
     if (!rest[0]) throw new UsageError("usage: rm <id|url>");
     const ref = parsePasteRef(rest[0]);
@@ -452,7 +515,7 @@ export async function main(argv) {
     if (!token) throw new CliError(`no edit token for ${ref.id} on this machine (set PASTR_EDIT_TOKEN to use one)`);
     await api(host, `/api/v1/pastes/${ref.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
     forget(ref.id);
-    return out(`deleted ${ref.id}\n`);
+    return ok(`deleted ${ref.id}`);
   }
 
   // ---- create ----
@@ -494,10 +557,12 @@ export async function main(argv) {
     });
     const url = o.raw ? p.rawUrl : p.url;
     if (o.json) out(JSON.stringify(p, null, 2) + "\n");
-    else out(url + "\n");
-    if (o.copy) {
-      if (writeClipboard(url)) process.stderr.write("copied to clipboard\n");
-      else process.stderr.write("could not copy to clipboard\n");
+    else out(link(url) + "\n");
+    const copied = o.copy ? (writeClipboard(url) ? "copied to clipboard" : "could not copy to clipboard") : "";
+    // The URL alone goes to stdout; everything else is a dim stderr line so pipes stay clean.
+    if (!o.json && (ERR_TTY || copied)) {
+      const meta = ERR_TTY ? [item.title, p.expires ? `expires ${fmtRel(p.expires)}` : "never expires", p.burn && "burn after read", p.enc && "encrypted", copied, `${NAME} token ${p.id} to edit on the site`] : [copied];
+      note(meta.filter(Boolean).join(" · "));
     }
     if (o.open) openInBrowser(url);
   }
@@ -516,7 +581,9 @@ const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.
 if (isMain || (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1])) {
   main(process.argv.slice(2)).catch((err) => {
     const usage = err instanceof UsageError || err?.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" || err?.code?.startsWith?.("ERR_PARSE_ARGS");
-    process.stderr.write(`${NAME}: ${err.message}\n${usage ? `Run \`${NAME} --help\` for usage.\n` : ""}`);
+    const prefix = ERR_TTY ? styleText("red", "✗") : `${NAME}:`;
+    const hint = usage ? `Run \`${NAME} --help\` for usage.\n` : "";
+    process.stderr.write(`${prefix} ${err.message}\n${ERR_TTY ? styleText("dim", hint) : hint}`);
     process.exit(usage ? 2 : 1);
   });
 }

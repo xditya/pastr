@@ -59,7 +59,8 @@ pastr clip -E -c                # clipboard → encrypted paste, link copied bac
 pastr text "hello there" -b     # literal text, burn after read
 pastr get ${HOST}/AbCd1234#key  # print (and decrypt) a paste
 pastr ls                        # pastes made from this machine
-pastr rm AbCd1234               # delete with the locally stored edit token`}</Code>
+pastr rm AbCd1234               # delete with the locally stored edit token
+pastr token AbCd1234            # show that token, for the site's Edit/Delete prompt`}</Code>
 
         <H2 id="quick">Plain curl</H2>
         <Code>{`# Pipe anything in and get a link back
