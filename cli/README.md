@@ -1,6 +1,6 @@
 # pastr
 
-Paste from the terminal to any [pastr](https://github.com/xditya/paster) instance.
+Paste from the terminal to any [pastr](https://github.com/xditya/pastr) instance, such as [pastr.xditya.me](https://pastr.xditya.me).
 
 ```sh
 npm install -g pastr        # or: npx pastr …

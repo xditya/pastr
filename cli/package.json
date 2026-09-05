@@ -23,8 +23,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xditya/paster",
+    "url": "https://github.com/xditya/pastr",
     "directory": "cli"
   },
-  "homepage": "https://github.com/xditya/paster#readme"
+  "homepage": "https://github.com/xditya/pastr#readme"
 }

@@ -4,7 +4,7 @@ Paste text, get a link, decide when it disappears. Hosted at [pastr.xditya.me](h
 
 pastr is a small pastebin that runs on Vercel and Upstash Redis. It highlights 70 languages, encrypts in the browser when you ask it to, and deletes pastes exactly when they expire. There are no accounts, ads or trackers; your own pastes are remembered in your browser so you can edit or delete them later.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fxditya%2Fpaster&env=UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN&envDescription=Create%20a%20free%20Redis%20database%20at%20console.upstash.com%20and%20paste%20its%20REST%20URL%20and%20token.&envLink=https%3A%2F%2Fconsole.upstash.com&project-name=pastr&repository-name=pastr)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fxditya%2Fpastr&env=UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN&envDescription=Create%20a%20free%20Redis%20database%20at%20console.upstash.com%20and%20paste%20its%20REST%20URL%20and%20token.&envLink=https%3A%2F%2Fconsole.upstash.com&project-name=pastr&repository-name=pastr)
 
 ![A Go paste with line numbers, expiry, view count and the Copy, Raw, Download, Share, Fork and Edit buttons](e2e/screens/02-paste-light.png)
 
@@ -17,7 +17,7 @@ pastr is a small pastebin that runs on Vercel and Upstash Redis. It highlights 7
 - A warning before you leak something: the editor flags text that looks like an API key, private key, JWT or password.
 - Operator tools: an admin listing of recent and most-reported pastes, abuse reports with a webhook, and an expiry cap.
 
-pastr replaces [pasty](https://github.com/xditya/pasty). The repository is still called `paster`, its working name. The look borrows the tokens of [engram](https://engram.xditya.me): three greys, one accent, hairlines instead of shadows, Geist and Geist Mono.
+pastr replaces [pasty](https://github.com/xditya/pasty). The look borrows the tokens of [engram](https://engram.xditya.me): three greys, one accent, hairlines instead of shadows, Geist and Geist Mono.
 
 ## Deploy
 
