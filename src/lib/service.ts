@@ -5,6 +5,7 @@ import { BASE64, base64Bytes, byteLength } from "./bytes";
 import { expiresAt, expirySeconds, normalizeExpiry } from "./expiry";
 import { HttpError } from "./http";
 import { isValidId, newId } from "./ids";
+import { detectLang } from "./detect";
 import { imageMime, langFromFilename } from "./langs";
 import { type PasteRecord, type PublicPaste, toPublic } from "./paste";
 import { getStore } from "./store";
@@ -35,6 +36,8 @@ export async function createPaste(raw: Record<string, unknown>): Promise<Created
   }
   if (raw.lang === "auto" || raw.lang === "") delete raw.lang;
   assertContentSize(raw.content);
+  // No language from the client (curl, CLI stdin): guess from the content like the editor does.
+  if (raw.lang === undefined && !raw.enc && typeof raw.content === "string") raw.lang = detectLang(raw.content);
 
   const parsed = createPasteSchema.safeParse(raw);
   if (!parsed.success) throw new HttpError(400, "invalid", firstIssue(parsed.error));

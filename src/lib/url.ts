@@ -9,6 +9,7 @@ export function originFrom(req: Request): string {
   return `${proto}://${host}`;
 }
 
-export function pasteUrl(origin: string, id: string, lang?: string): string {
-  return `${origin}/${id}${lang && lang !== "text" ? `.${lang}` : ""}`;
+/** Canonical link is just /{id}; the stored record already knows the language (`/{id}.{lang}` still resolves). */
+export function pasteUrl(origin: string, id: string): string {
+  return `${origin}/${id}`;
 }

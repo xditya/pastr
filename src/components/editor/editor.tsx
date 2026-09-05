@@ -318,7 +318,7 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
         key: fragment,
         encrypted: encrypt,
       });
-      const target = `/${created.id}${!encrypt && finalLang !== "text" ? `.${finalLang}` : ""}${fragment ? `#${fragment}` : ""}`;
+      const target = `/${created.id}${fragment ? `#${fragment}` : ""}`;
       onSaved?.({ id: created.id, content, title: cleanTitle, lang: finalLang, enc: body.enc });
       router.push(target);
     } catch (err) {

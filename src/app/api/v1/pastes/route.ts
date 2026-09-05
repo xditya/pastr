@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     const body = await readBody(req, LIMITS.maxBytes);
     const { paste, editToken } = await createPaste(body);
     const origin = originFrom(req);
-    const url = pasteUrl(origin, paste.id, paste.lang);
+    const url = pasteUrl(origin, paste.id);
     const rawUrl = `${origin}/${paste.id}/raw`;
     const headers = { Location: url, "X-Edit-Token": editToken };
     if (wantsText) return text(`${url}\n`, { status: 201, headers });

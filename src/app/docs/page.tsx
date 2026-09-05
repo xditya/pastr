@@ -95,7 +95,7 @@ Content-Type: application/json
 
 201 Created
 {
-  "id": "k7Pq2Xw9", "url": "${HOST}/k7Pq2Xw9.go", "rawUrl": "${HOST}/k7Pq2Xw9/raw",
+  "id": "k7Pq2Xw9", "url": "${HOST}/k7Pq2Xw9", "rawUrl": "${HOST}/k7Pq2Xw9/raw",
   "editToken": "…",            // shown once, never stored in clear
   "title": "hello.txt", "lang": "go", "created": 1757000000000, "expires": 1757604800000,
   "burn": false, "views": 0, "size": 5

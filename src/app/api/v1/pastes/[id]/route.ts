@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     await enforceRateLimit("read", clientIp(req));
     const paste = await readPaste(id);
     const origin = originFrom(req);
-    return json({ ...paste, url: pasteUrl(origin, paste.id, paste.lang), rawUrl: `${origin}/${paste.id}/raw` });
+    return json({ ...paste, url: pasteUrl(origin, paste.id), rawUrl: `${origin}/${paste.id}/raw` });
   } catch (err) {
     return errorResponse(err);
   }
