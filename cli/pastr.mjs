@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs, styleText } from "node:util";
 import { createInterface } from "node:readline";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.4.1";
 const NAME = "pastr";
 const DEFAULT_HOST = "https://pastr.xditya.me";
 
@@ -261,10 +261,20 @@ function promptHidden(question) {
 }
 
 async function readStdin() {
-  if (process.stdin.isTTY) note(`Type or paste, then press ${platform() === "win32" ? "Ctrl-Z, Enter" : "Ctrl-D"}:`);
-  const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
-  return Buffer.concat(chunks).toString("utf8");
+  if (!process.stdin.isTTY) {
+    const chunks = [];
+    for await (const chunk of process.stdin) chunks.push(chunk);
+    return Buffer.concat(chunks).toString("utf8");
+  }
+  // Interactive: readline handles Ctrl-D itself, so it ends the paste on Windows too (the console's
+  // Ctrl-Z convention never reaches a Node stream reliably there).
+  note("Type or paste, then press Ctrl-D on an empty line to finish:");
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true, prompt: "" });
+  const lines = [];
+  rl.on("line", (l) => lines.push(l));
+  rl.on("SIGINT", () => process.exit(130));
+  await new Promise((resolve) => rl.on("close", resolve));
+  return lines.length ? lines.join("\n") + "\n" : "";
 }
 
 // ---------------------------------------------------------------------------
