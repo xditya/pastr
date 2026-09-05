@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, Download, Eye, FileCode2, Flag, Flame, GitFork, Link2, Lock, Pencil, Share2, Trash2, WrapText } from "lucide-react";
+import { Check, Copy, Download, FileCode2, Flag, Flame, GitFork, Link2, Lock, Pencil, Share2, Trash2, WrapText } from "lucide-react";
 import type { EncryptionMeta, PublicPaste } from "@/lib/paste";
 import { api, ApiError } from "@/lib/client";
 import { decryptEnvelope } from "@/lib/crypto";
@@ -15,9 +15,8 @@ import { forgetPaste, getLocalPaste, rememberPaste, setPrefs, updateLocalPaste }
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useLocalPaste, useMounted, usePrefs } from "@/hooks/use-local";
 import { useToast } from "@/components/ui/toast";
-import { Button, IconButton, buttonClass } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Kbd } from "@/components/ui/kbd";
 import { CodeBlock } from "./code-block";
 import { MarkdownView } from "./markdown-view";
 import { ShareDialog } from "./share-dialog";
@@ -27,6 +26,11 @@ import { stashFork } from "@/components/editor/new-paste";
 import { cn } from "@/lib/cn";
 
 type Mode = "plain" | "encrypted" | "burn";
+
+/** One segment of the paste toolbar. Anchors and buttons share it so the row reads as one control. */
+const tool =
+  "flex h-8 items-center gap-1.5 px-2.5 text-[13px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent aria-pressed:bg-surface-2 aria-pressed:text-fg";
+const toolLabel = "hidden md:inline";
 
 type Props = {
   mode: Mode;
@@ -335,20 +339,20 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
     <div className="flex flex-1 flex-col">
       {/* Header */}
       {!embed && (
-        <div className="flex flex-wrap items-start gap-3 py-4">
+        <div className="flex flex-col gap-3 pb-3 md:flex-row md:items-center">
           <div className="min-w-0 flex-1">
             <h1 className="flex items-center gap-2 text-[17px] font-semibold tracking-tight">
               {paste.enc && <Lock className="size-4 shrink-0 text-fg-muted" aria-label="Encrypted" />}
               {paste.burn && <Flame className="size-4 shrink-0 text-warning" aria-label="Burn after read" />}
               <span className="truncate">{title || <span className="font-mono text-fg-muted">{paste.id}</span>}</span>
             </h1>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-fg-muted">
-              <span className="flex items-center gap-1">
-                <FileCode2 className="size-3" aria-hidden /> {paste.enc && !revealed ? "encrypted" : langLabel}
-              </span>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-fg-muted">
+              <span>{paste.enc && !revealed ? "encrypted" : langLabel}</span>
+              <span aria-hidden>·</span>
               <time dateTime={new Date(paste.created).toISOString()} title={mounted ? new Date(paste.created).toLocaleString() : undefined} suppressHydrationWarning>
                 {mounted ? formatRelative(paste.created) : isoMinute(paste.created)}
               </time>
+              <span aria-hidden>·</span>
               {paste.expires ? (
                 <time dateTime={new Date(paste.expires).toISOString()} suppressHydrationWarning>
                   {mounted ? `expires ${formatRelative(paste.expires)}` : `expires ${isoMinute(paste.expires)}`}
@@ -356,85 +360,66 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
               ) : (
                 <span>never expires</span>
               )}
-              <span className="flex items-center gap-1">
-                <Eye className="size-3" aria-hidden /> {paste.views.toLocaleString("en-US")} {paste.views === 1 ? "view" : "views"}
+              <span aria-hidden>·</span>
+              <span>
+                {paste.views.toLocaleString("en-US")} {paste.views === 1 ? "view" : "views"}
               </span>
-              <span>{sizeLabel}</span>
-              {paste.enc && <span>end-to-end encrypted</span>}
-              {burned && <span className="text-warning">destroyed — this was the only view</span>}
+              <span aria-hidden className="hidden sm:inline">·</span>
+              <span className="hidden sm:inline">{sizeLabel}</span>
+              {burned && <span className="text-warning">· destroyed, this was the only view</span>}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
+          {/* One toolbar: icons everywhere, labels from md up. Titles carry the hotkeys. */}
+          <div role="toolbar" aria-label="Paste actions" className="flex w-fit divide-x divide-border overflow-hidden rounded-md border border-border bg-surface">
+            {isMarkdown && revealed && (
+              <button type="button" onClick={() => setPreview(!preview)} aria-pressed={!preview} title={preview ? "Show source" : "Show preview"} className={tool}>
+                <FileCode2 className="size-3.5" aria-hidden /> <span className={toolLabel}>{preview ? "Source" : "Preview"}</span>
+              </button>
+            )}
+            {revealed && !image && (!isMarkdown || !preview) && (
+              <button type="button" onClick={toggleWrap} aria-pressed={wrap} title="Wrap long lines (w)" className={tool}>
+                <WrapText className="size-3.5" aria-hidden /> <span className={toolLabel}>Wrap</span>
+              </button>
+            )}
             {!image && (
-              <Button onClick={copy} disabled={!revealed} title="Copy (c)" aria-label="Copy">
-                {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
-                Copy
-              </Button>
+              <button type="button" onClick={copy} disabled={!revealed} title="Copy (c)" aria-label="Copy" className={tool}>
+                {copied ? <Check className="size-3.5 text-success" aria-hidden /> : <Copy className="size-3.5" aria-hidden />} <span className={toolLabel}>Copy</span>
+              </button>
             )}
             {!paste.enc && !paste.burn && (
-              <a href={`/${paste.id}/raw`} target="_blank" rel="noopener" className={buttonClass()} title="Raw (r)">
-                <Link2 className="size-3.5" /> Raw
+              <a href={`/${paste.id}/raw`} target="_blank" rel="noopener" title="Raw (r)" className={tool}>
+                <Link2 className="size-3.5" aria-hidden /> <span className={toolLabel}>Raw</span>
               </a>
             )}
             {!paste.enc && !paste.burn && (
-              <a href={`/${paste.id}/raw?dl=1`} className={buttonClass()} title="Download" aria-label="Download">
-                <Download className="size-3.5" /> <span className="sr-only sm:not-sr-only">Download</span>
+              <a href={`/${paste.id}/raw?dl=1`} title="Download" aria-label="Download" className={tool}>
+                <Download className="size-3.5" aria-hidden /> <span className={toolLabel}>Download</span>
               </a>
             )}
             {revealed && (paste.enc || paste.burn) && (
-              <Button onClick={() => downloadContent(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`, image)} title="Download a copy" aria-label="Download">
-                <Download className="size-3.5" /> <span className="sr-only sm:not-sr-only">Download</span>
-              </Button>
+              <button type="button" onClick={() => downloadContent(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`, image)} title="Download a copy" aria-label="Download" className={tool}>
+                <Download className="size-3.5" aria-hidden /> <span className={toolLabel}>Download</span>
+              </button>
             )}
             {!burned && (
-              <Button onClick={() => void shareNative()} title="Share" aria-label="Share">
-                <Share2 className="size-3.5" /> <span className="sr-only sm:not-sr-only">Share</span>
-              </Button>
+              <button type="button" onClick={() => void shareNative()} title="Share" aria-label="Share" className={tool}>
+                <Share2 className="size-3.5" aria-hidden /> <span className={toolLabel}>Share</span>
+              </button>
             )}
-            <Button onClick={fork} disabled={!revealed} title="Fork into a new paste (f)" aria-label="Fork">
-              <GitFork className="size-3.5" /> <span className="sr-only sm:not-sr-only">Fork</span>
-            </Button>
+            <button type="button" onClick={fork} disabled={!revealed} title="Fork into a new paste (f)" aria-label="Fork" className={tool}>
+              <GitFork className="size-3.5" aria-hidden /> <span className={toolLabel}>Fork</span>
+            </button>
             {!paste.burn && (
-              <Button onClick={startEdit} disabled={!revealed} title={hasToken ? "Edit (e)" : "Edit — needs the edit token"} aria-label="Edit">
-                <Pencil className="size-3.5" /> <span className="sr-only sm:not-sr-only">Edit</span>
-              </Button>
+              <button type="button" onClick={startEdit} disabled={!revealed} title={hasToken ? "Edit (e)" : "Edit, needs the edit token"} aria-label="Edit" className={tool}>
+                <Pencil className="size-3.5" aria-hidden /> <span className={toolLabel}>Edit</span>
+              </button>
             )}
             {!burned && (
-              <IconButton label="Delete" title={hasToken ? "Delete" : "Delete — needs the edit token"} variant="danger" onClick={askDelete}>
-                <Trash2 className="size-4" />
-              </IconButton>
+              <button type="button" onClick={askDelete} title={hasToken ? "Delete" : "Delete, needs the edit token"} aria-label="Delete" className={cn(tool, "hover:text-danger")}>
+                <Trash2 className="size-3.5" aria-hidden />
+              </button>
             )}
           </div>
-        </div>
-      )}
-
-      {/* View toolbar */}
-      {revealed && !image && (
-        <div className="mb-2 flex items-center gap-1.5">
-          {isMarkdown && (
-            <div role="group" aria-label="View" className="flex rounded-md border border-border p-0.5">
-              <button type="button" aria-pressed={preview} onClick={() => setPreview(true)} className={cn("rounded px-2 py-0.5 text-[12px]", preview ? "bg-surface-2 text-fg" : "text-fg-muted hover:text-fg")}>
-                Preview
-              </button>
-              <button type="button" aria-pressed={!preview} onClick={() => setPreview(false)} className={cn("rounded px-2 py-0.5 text-[12px]", !preview ? "bg-surface-2 text-fg" : "text-fg-muted hover:text-fg")}>
-                Source
-              </button>
-            </div>
-          )}
-          {(!isMarkdown || !preview) && (
-            <button
-              type="button"
-              onClick={toggleWrap}
-              aria-pressed={wrap}
-              title="Toggle line wrap (w)"
-              className={cn("flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[12px]", wrap ? "bg-surface-2 text-fg" : "text-fg-muted hover:text-fg")}
-            >
-              <WrapText className="size-3.5" /> Wrap
-            </button>
-          )}
-          <span className="ml-auto hidden text-[11px] text-fg-faint sm:flex sm:items-center sm:gap-1">
-            {paste.enc ? "click a line number to select it" : "click a line number to link it"} · <Kbd>shift</Kbd> click for a range
-          </span>
         </div>
       )}
 
@@ -500,15 +485,15 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
 
       {/* Footer row */}
       {!embed && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3 text-[12px] text-fg-faint">
-          <span className="font-mono">{paste.id}</span>
+        <div className="flex items-center gap-x-3 py-2 font-mono text-[11.5px] text-fg-faint">
+          <span>{paste.id}</span>
           {revealed && !image && <span>{revealed.content.split("\n").length.toLocaleString("en-US")} lines</span>}
-          <span className="hidden sm:inline">
-            <Kbd>c</Kbd> copy · <Kbd>e</Kbd> edit · <Kbd>f</Kbd> fork · <Kbd>w</Kbd> wrap · <Kbd>n</Kbd> new
-          </span>
+          {revealed && !image && (!isMarkdown || !preview) && (
+            <span className="hidden md:inline">{paste.enc ? "click a line number to select it, shift-click for a range" : "click a line number to link it, shift-click for a range"}</span>
+          )}
           {!burned && (
             <button type="button" onClick={() => setReport(true)} className="ml-auto flex items-center gap-1 hover:text-danger">
-              <Flag className="size-3" /> Report
+              <Flag className="size-3" aria-hidden /> Report
             </button>
           )}
         </div>

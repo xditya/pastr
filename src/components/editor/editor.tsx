@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
-import { ClipboardPaste, Flame, ImageIcon, Lock, Save, ShieldAlert, Upload, X } from "lucide-react";
+import { ClipboardPaste, Flame, ImageIcon, KeyRound, Lock, Save, ShieldAlert, Upload, X } from "lucide-react";
 import { findSecrets } from "@/lib/secrets";
 import { DEFAULT_EXPIRY, EXPIRIES, LIMITS } from "@/lib/config";
 import { base64Bytes, byteLength, formatBytes } from "@/lib/bytes";
@@ -18,7 +18,6 @@ import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/cn";
 
 const POPULAR = ["text", "markdown", "javascript", "typescript", "python", "go", "rust", "json", "yaml", "shellscript", "html", "css", "sql", "java", "c", "cpp"];
@@ -349,8 +348,8 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
       onDrop={onDrop}
     >
       <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
-      {/* Options bar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2.5">
+      {/* Title row: what it is, and the one primary action */}
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <input
           name="title"
           value={title}
@@ -358,8 +357,22 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
           placeholder="Untitled"
           maxLength={LIMITS.maxTitle}
           aria-label="Title"
-          className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-[15px] font-medium placeholder:text-fg-faint hover:border-border focus:border-border-strong focus:bg-surface"
+          className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-[15px] font-medium placeholder:text-fg-faint hover:border-border focus:border-border-strong focus:bg-bg"
         />
+        {onCancel && (
+          <Button type="button" variant="ghost" onClick={cancel}>
+            Cancel
+          </Button>
+        )}
+        <Button type="submit" variant="primary" disabled={!canSave} loading={saving} title={`Save (${mac ? "⌘" : "Ctrl"}+S)`}>
+          <Save className="size-3.5" aria-hidden />
+          {edit ? "Save changes" : "Save"}
+        </Button>
+      </div>
+
+      {/* Options row: uniform 32px chips, labels always visible */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2">
+        <div className="flex w-full gap-1.5 sm:contents">
         {image ? (
           <span className="flex h-8 items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-[13px] text-fg-muted">
             <ImageIcon className="size-3.5 text-fg-faint" aria-hidden />
@@ -369,7 +382,7 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
             </button>
           </span>
         ) : (
-        <Select name="lang" value={lang} onChange={(e) => setLang(e.target.value)} aria-label="Language" className="w-44">
+        <Select name="lang" value={lang} onChange={(e) => setLang(e.target.value)} aria-label="Language" className="min-w-0 flex-1 sm:flex-none">
           <option value="auto">{lang === "auto" && content ? `Auto · ${LANGS.find((l) => l.id === detected)?.label ?? "text"}` : "Auto-detect"}</option>
           <optgroup label="Popular">
             {POPULAR.map((id) => {
@@ -391,7 +404,7 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
         </Select>
         )}
         {!edit && (
-          <Select name="expires" value={expiry} onChange={(e) => setExpiry(e.target.value)} aria-label="Expiry" className="w-44">
+          <Select name="expires" value={expiry} onChange={(e) => setExpiry(e.target.value)} aria-label="Expiry" className="min-w-0 flex-1 sm:flex-none">
             {allowedExpiries.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.id === "never" ? "Never expires" : `Expires in ${e.label}`}
@@ -399,63 +412,42 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
             ))}
           </Select>
         )}
+        </div>
         {!edit && (
-          <label className="flex h-8 cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-[13px] text-fg-muted hover:border-border-strong">
-            <Flame className={cn("size-3.5", burn ? "text-warning" : "text-fg-faint")} aria-hidden />
-            <span className="hidden sm:inline">Burn after read</span>
-            <span className="sm:hidden">Burn</span>
-            <Switch checked={burn} onChange={setBurn} label="Burn after read" />
+          <>
+            <Switch checked={burn} onChange={setBurn} label="Burn after read">
+              <Flame className={cn("size-3.5", burn ? "text-warning" : "text-fg-faint")} aria-hidden /> Burn
+            </Switch>
             <input type="hidden" name="burn" value={burn ? "true" : "false"} />
-          </label>
+          </>
         )}
-        <label
-          className={cn(
-            "flex h-8 cursor-pointer items-center gap-2 rounded-md border px-2.5 text-[13px] hover:border-border-strong",
-            encrypt ? "border-border-strong bg-surface-2 text-fg" : "border-border bg-surface text-fg-muted",
-            edit && "cursor-not-allowed opacity-60",
-          )}
-        >
-          <Lock className={cn("size-3.5", encrypt ? "text-fg" : "text-fg-faint")} aria-hidden />
-          <span className="hidden sm:inline">Encrypt</span>
-          <Switch checked={encrypt} onChange={setEncrypt} label="Encrypt in browser" disabled={!!edit} />
-        </label>
+        <Switch checked={encrypt} onChange={setEncrypt} label="Encrypt in browser" disabled={!!edit}>
+          <Lock className={cn("size-3.5", !encrypt && "text-fg-faint")} aria-hidden /> Encrypt
+        </Switch>
         {encrypt && !edit && (
-          <div className="flex h-8 items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-[13px] text-fg-muted">
-            <span className="hidden sm:inline">Password</span>
-            <Switch checked={usePassword} onChange={setUsePassword} label="Protect with a password instead of a link key" />
-            {usePassword && (
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="required"
-                autoComplete="new-password"
-                aria-label="Password"
-                className="h-6 w-32 rounded border border-border bg-bg px-1.5 text-[13px]"
-              />
-            )}
-          </div>
+          <Switch checked={usePassword} onChange={setUsePassword} label="Protect with a password instead of a link key">
+            <KeyRound className={cn("size-3.5", !usePassword && "text-fg-faint")} aria-hidden /> Password
+          </Switch>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          {onCancel && (
-            <Button type="button" variant="ghost" onClick={cancel}>
-              Cancel
-            </Button>
-          )}
-          <Button type="button" variant="ghost" onClick={pasteFromClipboard} title="Paste from clipboard" aria-label="Paste from clipboard">
-            <ClipboardPaste className="size-3.5" aria-hidden />
-            <span className="sr-only sm:not-sr-only">Clipboard</span>
+        {encrypt && !edit && usePassword && (
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            autoComplete="new-password"
+            aria-label="Password"
+            className="h-8 w-36 rounded-md border border-border bg-bg px-2.5 text-[13px] focus:border-border-strong"
+          />
+        )}
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button type="button" onClick={pasteFromClipboard} title="Paste from clipboard" aria-label="Paste from clipboard">
+            <ClipboardPaste className="size-3.5" aria-hidden /> Clipboard
           </Button>
-          <Button type="button" variant="ghost" onClick={() => fileRef.current?.click()} title="Open a text file or image" aria-label="Open a text file or image">
-            <Upload className="size-3.5" aria-hidden />
-            <span className="sr-only sm:not-sr-only">File</span>
+          <Button type="button" onClick={() => fileRef.current?.click()} title="Open a text file or image" aria-label="Open a text file or image">
+            <Upload className="size-3.5" aria-hidden /> File
           </Button>
           <input ref={fileRef} type="file" className="hidden" onChange={onFileInput} accept="text/*,image/png,image/jpeg,image/gif,image/webp,.md,.json,.yml,.yaml,.toml,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.kt,.c,.cpp,.h,.cs,.rb,.php,.sh,.sql,.log,.csv,.xml,.diff,.patch" />
-          <Button type="submit" variant="primary" disabled={!canSave} loading={saving}>
-            <Save className="size-3.5" aria-hidden />
-            {edit ? "Save changes" : "Save"}
-            <Kbd className="ml-1 border-bg/30 bg-transparent text-bg/80">{mac ? "⌘" : "Ctrl"}S</Kbd>
-          </Button>
         </div>
       </div>
 
@@ -497,7 +489,7 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
-          placeholder="Paste or type here. Drop a file or image anywhere."
+          placeholder="Paste or type here…"
           aria-label="Paste content"
           className="editor-textarea min-h-[60vh] flex-1 resize-none bg-transparent px-4 py-3 outline-none placeholder:text-fg-faint"
         />
@@ -511,32 +503,25 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
       </div>
 
       {/* Status bar */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-3 py-2 font-mono text-[12px] text-fg-faint">
-        <span className={cn(tooLarge && "text-danger")}>
+      <div className="flex items-center gap-x-3 overflow-hidden border-t border-border px-3 py-1.5 font-mono text-[11.5px] text-fg-faint">
+        <span className={cn("truncate", tooLarge && "text-danger")}>
           {image
             ? `${LANGS.find((l) => l.id === lang)?.label} · ${formatBytes(base64Bytes(content))} of ${formatBytes(LIMITS.maxImageBytes)}`
-            : `${lines} ${lines === 1 ? "line" : "lines"} · ${content.length.toLocaleString("en-US")} chars · ${formatBytes(bytes)} of ${formatBytes(maxBytes)}`}
-          {encrypt && ` (≈${formatBytes(effectiveBytes)} encrypted)`}
-          {tooLarge && ` — over the ${formatBytes(maxBytes)} limit`}
+            : `${lines} ${lines === 1 ? "line" : "lines"} · ${formatBytes(encrypt ? effectiveBytes : bytes)}`}
+          {tooLarge ? ` · over the ${formatBytes(maxBytes)} limit` : encrypt ? " encrypted" : ""}
         </span>
-        {tabHint && <span>Tab now moves focus</span>}
+        {tabHint && <span className="shrink-0">Tab now moves focus</span>}
         <noscript>
-          <span>Encryption and burn-after-read need JavaScript; plain pastes work without it.</span>
+          <span>Encryption and burn-after-read need JavaScript.</span>
         </noscript>
-        {encrypt && (
-          <span className="flex items-center gap-1">
-            <Lock className="size-3" aria-hidden />
-            {usePassword ? "Encrypted with your password; the server never sees it." : "Encrypted in your browser; the key lives in the link after #."}
-          </span>
-        )}
-        {burn && (
-          <span className="flex items-center gap-1">
-            <Flame className="size-3" aria-hidden /> Destroyed after the first view.
-          </span>
-        )}
-        <span className="ml-auto hidden items-center gap-1 sm:flex">
-          <Kbd>Tab</Kbd> indents · <Kbd>Esc</Kbd> then <Kbd>Tab</Kbd> leaves · <Kbd>{mac ? "⌘" : "Ctrl"}</Kbd>
-          <Kbd>↵</Kbd> saves
+        <span className="ml-auto hidden shrink-0 truncate md:inline">
+          {encrypt
+            ? usePassword
+              ? "the password never leaves your browser"
+              : "the key lives in the link after #"
+            : burn
+              ? "destroyed after the first view"
+              : "drop a file or image anywhere"}
         </span>
       </div>
       </div>

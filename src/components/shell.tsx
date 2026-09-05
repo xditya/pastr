@@ -30,23 +30,19 @@ export function Shell({ children, actions, wide }: { children: ReactNode; action
           </div>
         </div>
       </header>
-      <main className={`mx-auto flex w-full flex-1 flex-col px-4 ${wide ? "max-w-[1400px]" : "max-w-6xl"}`}>{children}</main>
-      <footer className="border-t border-border">
-        <div className={`mx-auto flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 font-mono text-[12.5px] text-fg-faint ${wide ? "max-w-[1400px]" : "max-w-6xl"}`}>
-          <span>{SITE.name}</span>
-          <span aria-hidden>·</span>
+      <main className={`mx-auto flex w-full flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4 ${wide ? "max-w-[1400px]" : "max-w-6xl"}`}>{children}</main>
+      <footer>
+        <div className={`mx-auto flex items-center gap-x-4 px-4 py-3 font-mono text-[12px] text-fg-faint ${wide ? "max-w-[1400px]" : "max-w-6xl"}`}>
           <Link href="/docs" className="transition-colors hover:text-fg">
             api &amp; cli
           </Link>
-          <span aria-hidden>·</span>
           <Link href="/docs#security" className="transition-colors hover:text-fg">
             security
           </Link>
-          <span aria-hidden>·</span>
           <a href={SITE.repo} className="transition-colors hover:text-fg" rel="noopener noreferrer" target="_blank">
             source
           </a>
-          <span className="ml-auto">no ads · no accounts · no tracking</span>
+          <span className="ml-auto hidden sm:inline">no ads · no accounts · no tracking</span>
         </div>
       </footer>
     </div>
