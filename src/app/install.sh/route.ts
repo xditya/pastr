@@ -10,9 +10,9 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   const origin = originFrom(req);
   const script = `#!/bin/sh
-# pastly installer — puts the \`pastly\` shell CLI in ~/.local/bin (override with PASTER_BIN_DIR).
+# pastly installer — puts the \`pastly\` shell CLI in ~/.local/bin (override with PASTLY_BIN_DIR).
 set -eu
-DIR="\${PASTER_BIN_DIR:-$HOME/.local/bin}"
+DIR="\${PASTLY_BIN_DIR:-$HOME/.local/bin}"
 mkdir -p "$DIR"
 curl -fsSL "${origin}/pastly.sh" -o "$DIR/pastly"
 chmod +x "$DIR/pastly"

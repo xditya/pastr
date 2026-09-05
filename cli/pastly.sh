@@ -14,7 +14,7 @@
 # Encryption needs the Node version: npm i -g pastly
 set -eu
 
-HOST="${PASTER_HOST:-__HOST__}"
+HOST="${PASTLY_HOST:-__HOST__}"
 EXPIRES="" BURN="false" TITLE="" LANG_ID="" COPY=0 OPEN=0 RAW=0
 CMD="" ; ARGS=""
 

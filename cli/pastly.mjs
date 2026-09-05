@@ -22,7 +22,7 @@ const NAME = "pastly";
 // ---------------------------------------------------------------------------
 
 export function configDir() {
-  if (process.env.PASTER_CONFIG_DIR) return process.env.PASTER_CONFIG_DIR;
+  if (process.env.PASTLY_CONFIG_DIR) return process.env.PASTLY_CONFIG_DIR;
   if (platform() === "win32") return join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), NAME);
   return join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), NAME);
 }
@@ -67,9 +67,9 @@ function forget(id) {
 }
 
 export function resolveHost(flag) {
-  const host = flag || process.env.PASTER_HOST || getConfig().host;
+  const host = flag || process.env.PASTLY_HOST || getConfig().host;
   if (!host) {
-    throw new UsageError(`no host configured. Run \`${NAME} config host https://your-pastly.example\` or set PASTER_HOST.`);
+    throw new UsageError(`no host configured. Run \`${NAME} config host https://your-pastly.example\` or set PASTLY_HOST.`);
   }
   return host.replace(/\/+$/, "");
 }
@@ -329,7 +329,7 @@ Options
   -o, --open              open the URL in a browser
   -r, --raw               print the raw URL (plain text) instead of the page URL
   -j, --json              print the full API response
-  -H, --host <url>        server to use (env PASTER_HOST, or \`${NAME} config host …\`)
+  -H, --host <url>        server to use (env PASTLY_HOST, or \`${NAME} config host …\`)
   -h, --help              show this help
   -v, --version           show the version
 
@@ -382,7 +382,7 @@ export async function main(argv) {
       return out(`host set to ${rest[1]}\n`);
     }
     const cfg = getConfig();
-    return out(`host: ${process.env.PASTER_HOST || cfg.host || "(not set)"}\nconfig: ${configDir()}\n`);
+    return out(`host: ${process.env.PASTLY_HOST || cfg.host || "(not set)"}\nconfig: ${configDir()}\n`);
   }
 
   if (cmd === "ls") {
@@ -419,8 +419,8 @@ export async function main(argv) {
     const ref = parsePasteRef(rest[0]);
     const host = ref.host ?? resolveHost(o.host);
     const entry = getHistory().find((h) => h.id === ref.id);
-    const token = entry?.editToken ?? process.env.PASTER_EDIT_TOKEN;
-    if (!token) throw new CliError(`no edit token for ${ref.id} on this machine (set PASTER_EDIT_TOKEN to use one)`);
+    const token = entry?.editToken ?? process.env.PASTLY_EDIT_TOKEN;
+    if (!token) throw new CliError(`no edit token for ${ref.id} on this machine (set PASTLY_EDIT_TOKEN to use one)`);
     await api(host, `/api/v1/pastes/${ref.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
     forget(ref.id);
     return out(`deleted ${ref.id}\n`);
