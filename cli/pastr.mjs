@@ -14,8 +14,9 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { createInterface } from "node:readline";
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.2.1";
 const NAME = "pastr";
+const DEFAULT_HOST = "https://pastr.xditya.me";
 
 // ---------------------------------------------------------------------------
 // Config & history
@@ -67,10 +68,7 @@ function forget(id) {
 }
 
 export function resolveHost(flag) {
-  const host = flag || process.env.PASTR_HOST || getConfig().host;
-  if (!host) {
-    throw new UsageError(`no host configured. Run \`${NAME} config host https://your-pastr.example\` or set PASTR_HOST.`);
-  }
+  const host = flag || process.env.PASTR_HOST || getConfig().host || DEFAULT_HOST;
   return host.replace(/\/+$/, "");
 }
 
@@ -359,7 +357,7 @@ Options
   -o, --open              open the URL in a browser
   -r, --raw               print the raw URL (plain text) instead of the page URL
   -j, --json              print the full API response
-  -H, --host <url>        server to use (env PASTR_HOST, or \`${NAME} config host …\`)
+  -H, --host <url>        server to use (default ${DEFAULT_HOST}; env PASTR_HOST, or \`${NAME} config host …\`)
   -h, --help              show this help
   -v, --version           show the version
 
@@ -413,7 +411,7 @@ export async function main(argv) {
       return out(`host set to ${rest[1]}\n`);
     }
     const cfg = getConfig();
-    return out(`host: ${process.env.PASTR_HOST || cfg.host || "(not set)"}\nconfig: ${configDir()}\n`);
+    return out(`host: ${process.env.PASTR_HOST || cfg.host || DEFAULT_HOST}\nconfig: ${configDir()}\n`);
   }
 
   if (cmd === "ls") {

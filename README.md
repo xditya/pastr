@@ -52,7 +52,8 @@ To add a language, append it to `src/lib/langs.ts` and run `pnpm gen:grammars`.
 The CLI lives in [`cli/`](cli/) and is published to npm as `@xditya/pastr` (the bare name is blocked by npm as too close to `astro` and friends); the binary is still `pastr`. Every instance also serves a POSIX shell version with its own host baked in.
 
 ```sh
-npm install -g @xditya/pastr && pastr config host https://your-host    # Node 20+, supports -E encryption
+npm install -g @xditya/pastr                                        # Node 20+, supports -E encryption
+pastr config host https://your-host                                 # only for your own instance; pastr.xditya.me is the default
 curl -fsSL https://your-host/install.sh | sh                        # sh + curl, no Node
 
 ls -la | pastr                 # stdin

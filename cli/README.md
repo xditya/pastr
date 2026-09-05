@@ -4,7 +4,7 @@ Paste from the terminal to any [pastr](https://github.com/xditya/pastr) instance
 
 ```sh
 npm install -g @xditya/pastr        # or: npx @xditya/pastr …
-pastr config host https://your-pastr.example
+pastr config host https://your-pastr.example   # optional, defaults to pastr.xditya.me
 
 ls -la | pastr                  # stdin → link
 pastr main.go --expires 1d      # file (language from the extension)
@@ -19,6 +19,6 @@ pastr rm AbCd1234               # delete (uses the locally stored edit token)
 - Zero dependencies, Node 20+, macOS/Linux/Windows/WSL.
 - `-E` encrypts with AES-256-GCM before upload; the key is only in the URL fragment. `-p`/`-P` uses a password instead.
 - Edit tokens and link keys are kept in `~/.config/pastr/history.json` (`%APPDATA%\pastr` on Windows), mode 0600.
-- Set the host once with `pastr config host …` or `PASTR_HOST`.
+- Talks to pastr.xditya.me unless you point it elsewhere with `pastr config host …`, `PASTR_HOST` or `-H`.
 
 Prefer no Node at all? Every pastr instance serves a tiny POSIX shell version: `curl -fsSL https://your-pastr.example/install.sh | sh`.
