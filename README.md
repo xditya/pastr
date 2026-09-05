@@ -1,10 +1,10 @@
-# pastly
+# pastr
 
 Paste text, get a link, decide when it disappears.
 
-pastly is a small pastebin that runs on Vercel and Upstash Redis. It highlights 70 languages, encrypts in the browser when you ask it to, and deletes pastes exactly when they expire. There are no accounts, ads or trackers; your own pastes are remembered in your browser so you can edit or delete them later.
+pastr is a small pastebin that runs on Vercel and Upstash Redis. It highlights 70 languages, encrypts in the browser when you ask it to, and deletes pastes exactly when they expire. There are no accounts, ads or trackers; your own pastes are remembered in your browser so you can edit or delete them later.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fxditya%2Fpaster&env=UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN&envDescription=Create%20a%20free%20Redis%20database%20at%20console.upstash.com%20and%20paste%20its%20REST%20URL%20and%20token.&envLink=https%3A%2F%2Fconsole.upstash.com&project-name=pastly&repository-name=pastly)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fxditya%2Fpaster&env=UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN&envDescription=Create%20a%20free%20Redis%20database%20at%20console.upstash.com%20and%20paste%20its%20REST%20URL%20and%20token.&envLink=https%3A%2F%2Fconsole.upstash.com&project-name=pastr&repository-name=pastr)
 
 ![A Go paste with line numbers, expiry, view count and the Copy, Raw, Download, Share, Fork and Edit buttons](e2e/screens/02-paste-light.png)
 
@@ -13,11 +13,11 @@ pastly is a small pastebin that runs on Vercel and Upstash Redis. It highlights 
 - Syntax highlighting rendered on the server with shiki, in light and dark, with linkable line ranges, a wrap toggle and rendered Markdown. Pages work without JavaScript.
 - Expiry from 10 minutes to never, enforced by a Redis TTL instead of a cleanup job. Burn-after-read pastes are destroyed the moment someone opens them.
 - Optional end-to-end encryption (AES-256-GCM). The key lives after the `#` in the link or is derived from a password; the server only ever sees ciphertext, including the title and language.
-- A terminal-first API. `curl --data-binary @file host/api/v1/pastes` prints a link. The `pastly` CLI (npm, or a curl-installable shell script) pastes from stdin, files or the clipboard. hastebin clients keep working.
+- A terminal-first API. `curl --data-binary @file host/api/v1/pastes` prints a link. The `pastr` CLI (npm, or a curl-installable shell script) pastes from stdin, files or the clipboard. hastebin clients keep working.
 - A warning before you leak something: the editor flags text that looks like an API key, private key, JWT or password.
 - Operator tools: an admin listing of recent and most-reported pastes, abuse reports with a webhook, and an expiry cap.
 
-pastly replaces [pasty](https://github.com/xditya/pasty). The repository is still called `paster`, its working name. The look borrows the tokens of [engram](https://engram.xditya.me): three greys, one accent, hairlines instead of shadows, Geist and Geist Mono.
+pastr replaces [pasty](https://github.com/xditya/pasty). The repository is still called `paster`, its working name. The look borrows the tokens of [engram](https://engram.xditya.me): three greys, one accent, hairlines instead of shadows, Geist and Geist Mono.
 
 ## Deploy
 
@@ -48,19 +48,19 @@ To add a language, append it to `src/lib/langs.ts` and run `pnpm gen:grammars`.
 
 ## CLI
 
-The CLI lives in [`cli/`](cli/) and is published to npm as `pastly`. Every instance also serves a POSIX shell version with its own host baked in.
+The CLI lives in [`cli/`](cli/) and is published to npm as `pastr`. Every instance also serves a POSIX shell version with its own host baked in.
 
 ```sh
-npm install -g pastly && pastly config host https://your-host    # Node 20+, supports -E encryption
+npm install -g pastr && pastr config host https://your-host    # Node 20+, supports -E encryption
 curl -fsSL https://your-host/install.sh | sh                        # sh + curl, no Node
 
-ls -la | pastly                 # stdin
-pastly main.go -e 1d            # a file, language from the extension
-pastly clip -E -c               # clipboard, encrypted, link copied back
-pastly text "hello" -b          # burn after read
-pastly get URL#key              # print, decrypting if needed
-pastly ls                       # what you pasted from this machine
-pastly rm ID                    # delete with the locally stored edit token
+ls -la | pastr                 # stdin
+pastr main.go -e 1d            # a file, language from the extension
+pastr clip -E -c               # clipboard, encrypted, link copied back
+pastr text "hello" -b          # burn after read
+pastr get URL#key              # print, decrypting if needed
+pastr ls                       # what you pasted from this machine
+pastr rm ID                    # delete with the locally stored edit token
 ```
 
 ## API
@@ -129,7 +129,7 @@ A page view costs two REST round trips (a peek pipeline, then one Lua script tha
 
 ## Compared with pasty
 
-| | pasty | pastly |
+| | pasty | pastr |
 | --- | --- | --- |
 | Expiry | one global lifetime, cron cleanup | per paste, exact TTL, plus burn-after-read |
 | Encryption | AES-CBC, key in fragment | AES-GCM (authenticated), key in fragment or password |

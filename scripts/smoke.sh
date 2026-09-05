@@ -54,7 +54,7 @@ check "$(curl -s -o /dev/null -w '%{http_code}' $BASE/api/v1/pastes/zzzzzzzz)" "
 check "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/v1/pastes/..%2f..")" "404" "weird id"
 check "$(curl -s $BASE/nope1234/raw)" "error: this paste doesn't exist, expired, or was burned (not_found)" "raw 404 text"
 check "$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS $BASE/api/v1/pastes)" "204" "cors preflight"
-check "$(curl -s $BASE/api/v1/info | py 'd["name"]+"|"+d["storage"]+"|"+str(len(d["languages"])>50)')" "pastly|memory|True" "info"
+check "$(curl -s $BASE/api/v1/info | py 'd["name"]+"|"+d["storage"]+"|"+str(len(d["languages"])>50)')" "pastr|memory|True" "info"
 
 # ---- review regressions ----
 H=$(curl -s -H "$A" -H "$J" -d '{"content":"head me","burn":true}' $BASE/api/v1/pastes | py 'd["id"]')
@@ -83,8 +83,8 @@ check "$(curl -s "$BASE/?text=shared+text&title=From+share" | grep -c 'shared te
 check "$(curl -s $BASE/api/v1/info | py 'str(len(d["expiries"]))+"|"+d["defaultExpiry"]')" "6|7d" "info lists expiries"
 
 # ---- CLI (Node) against the same server ----
-export PASTLY_CONFIG_DIR=$(mktemp -d)
-CLI="node $(dirname "$0")/../cli/pastly.mjs"
+export PASTR_CONFIG_DIR=$(mktemp -d)
+CLI="node $(dirname "$0")/../cli/pastr.mjs"
 check "$($CLI config host $BASE)" "host set to $BASE" "cli config host"
 U=$(printf 'from stdin\n' | $CLI); check "$(echo "$U" | grep -c "^$BASE/[A-Za-z0-9]\{8\}$")" "1" "cli stdin → url"
 check "$(curl -s "$U/raw")" "from stdin" "cli stdin content"
@@ -99,18 +99,18 @@ U5=$(printf 'PW_CLI' | $CLI -p hunter2); check "$($CLI get "$U5" -p hunter2)" "P
 check "$($CLI ls | grep -c "^[A-Za-z0-9]\{8\}")" "5" "cli ls lists 5"
 check "$($CLI rm "$U")" "deleted $(basename "$U")" "cli rm"
 check "$(curl -s -o /dev/null -w '%{http_code}' "$U/raw")" "404" "cli rm removed paste"
-check "$($CLI get zzzzzzzz 2>&1 || true)" "pastly: 404 this paste doesn't exist, expired, or was burned" "cli get 404 message"
+check "$($CLI get zzzzzzzz 2>&1 || true)" "pastr: 404 this paste doesn't exist, expired, or was burned" "cli get 404 message"
 check "$($CLI --bogus >/dev/null 2>&1; echo $?)" "2" "cli unknown option exits 2"
 # ---- shell CLI ----
-SH=$(mktemp); curl -s "$BASE/pastly.sh" > "$SH"; chmod +x "$SH"
-check "$(grep -c "HOST=\"\${PASTLY_HOST:-$BASE}\"" "$SH")" "1" "pastly.sh has host baked in"
+SH=$(mktemp); curl -s "$BASE/pastr.sh" > "$SH"; chmod +x "$SH"
+check "$(grep -c "HOST=\"\${PASTR_HOST:-$BASE}\"" "$SH")" "1" "pastr.sh has host baked in"
 U6=$(printf 'from sh\n' | sh "$SH"); check "$(curl -s "$U6/raw")" "from sh" "sh stdin"
 U7=$(sh "$SH" /tmp/smoke_cli.go -e 10m); check "$(echo "$U7" | grep -c '\.go$')" "1" "sh file → lang suffix"
 check "$(sh "$SH" get "$U6")" "from sh" "sh get"
 check "$(sh "$SH" get "$U6/raw")" "from sh" "sh get /raw url"
 cp /tmp/smoke_cli.go "/tmp/my notes.go"; check "$(sh "$SH" /tmp/smoke_cli.go "/tmp/my notes.go" | grep -c '\.go$')" "2" "sh two files with a space"
 check "$(sh "$SH" text hi there -b | grep -c "^$BASE/")" "1" "sh text"
-check "$(curl -s "$BASE/install.sh" | grep -c "curl -fsSL \"$BASE/pastly.sh\"")" "1" "install.sh points at this host"
-rm -rf "$PASTLY_CONFIG_DIR" "$SH"
+check "$(curl -s "$BASE/install.sh" | grep -c "curl -fsSL \"$BASE/pastr.sh\"")" "1" "install.sh points at this host"
+rm -rf "$PASTR_CONFIG_DIR" "$SH"
 echo "passed=$pass failed=$fail"
 [ $fail -eq 0 ]

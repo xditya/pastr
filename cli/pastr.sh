@@ -1,25 +1,25 @@
 #!/bin/sh
-# pastly — paste from the terminal (POSIX sh + curl, no other dependencies).
+# pastr — paste from the terminal (POSIX sh + curl, no other dependencies).
 # Installed by: curl -fsSL https://__HOST__/install.sh | sh
 # Usage:
-#   ls | pastly                 paste stdin
-#   pastly file.go [file2 …]    paste files (language from the extension)
-#   pastly clip                 paste the clipboard
-#   pastly text "some words"    paste literal text
-#   pastly get <id|url>         print a paste
-#   pastly rm <id> <token>      delete a paste
+#   ls | pastr                 paste stdin
+#   pastr file.go [file2 …]    paste files (language from the extension)
+#   pastr clip                 paste the clipboard
+#   pastr text "some words"    paste literal text
+#   pastr get <id|url>         print a paste
+#   pastr rm <id> <token>      delete a paste
 # Options (before or after the command):
 #   -e|--expires 10m|1h|1d|7d|30d|never   -b|--burn   -t|--title <t>   -l|--lang <id>
 #   -c|--copy (copy URL to clipboard)     -o|--open   -r|--raw (print raw URL)   -H|--host <url>
-# Encryption needs the Node version: npm i -g pastly
+# Encryption needs the Node version: npm i -g pastr
 set -eu
 
-HOST="${PASTLY_HOST:-__HOST__}"
+HOST="${PASTR_HOST:-__HOST__}"
 EXPIRES="" BURN="false" TITLE="" LANG_ID="" COPY=0 OPEN=0 RAW=0
 CMD="" ; ARGS=""
 
 usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
-die() { printf 'pastly: %s\n' "$*" >&2; exit 1; }
+die() { printf 'pastr: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required"; }
 need curl
 
@@ -34,7 +34,7 @@ while [ $# -gt 0 ]; do
     -r|--raw) RAW=1; shift ;;
     -H|--host) HOST="$2"; shift 2 ;;
     -h|--help) usage ;;
-    -v|--version) echo "pastly.sh 0.1.0"; exit 0 ;;
+    -v|--version) echo "pastr.sh 0.1.0"; exit 0 ;;
     --) shift; break ;;
     -*) die "unknown option $1" ;;
     *) if [ -z "$CMD" ]; then CMD="$1"; else ARGS="$ARGS
@@ -101,7 +101,7 @@ case "$CMD" in
     # One file per line (names with spaces are fine).
     { printf '%s\n' "$CMD"; printf '%s\n' "$ARGS" | sed '1d'; } | while IFS= read -r f; do
       [ -n "$f" ] || continue
-      [ -f "$f" ] || { printf 'pastly: no such file: %s\n' "$f" >&2; exit 1; }
+      [ -f "$f" ] || { printf 'pastr: no such file: %s\n' "$f" >&2; exit 1; }
       post "$(basename "$f")" < "$f"
     done ;;
 esac

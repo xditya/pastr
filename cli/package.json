@@ -1,13 +1,13 @@
 {
-  "name": "pastly",
+  "name": "pastr",
   "version": "0.1.0",
-  "description": "Paste from the terminal to a pastly instance: pipe, files, clipboard, with optional end-to-end encryption.",
+  "description": "Paste from the terminal to a pastr instance: pipe, files, clipboard, with optional end-to-end encryption.",
   "type": "module",
   "bin": {
-    "pastly": "./pastly.mjs"
+    "pastr": "./pastr.mjs"
   },
   "files": [
-    "pastly.mjs",
+    "pastr.mjs",
     "README.md"
   ],
   "engines": {

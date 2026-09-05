@@ -1,23 +1,23 @@
-# pastly
+# pastr
 
-Paste from the terminal to any [pastly](https://github.com/xditya/paster) instance.
+Paste from the terminal to any [pastr](https://github.com/xditya/paster) instance.
 
 ```sh
-npm install -g pastly        # or: npx pastly …
-pastly config host https://your-pastly.example
+npm install -g pastr        # or: npx pastr …
+pastr config host https://your-pastr.example
 
-ls -la | pastly                  # stdin → link
-pastly main.go --expires 1d      # file (language from the extension)
-pastly clip -E -c                # clipboard, encrypted in the terminal, link copied back
-pastly text "hello there" -b     # literal text, burn after read
-pastly get https://host/AbCd1234#key
-pastly ls                        # what you pasted from this machine
-pastly rm AbCd1234               # delete (uses the locally stored edit token)
+ls -la | pastr                  # stdin → link
+pastr main.go --expires 1d      # file (language from the extension)
+pastr clip -E -c                # clipboard, encrypted in the terminal, link copied back
+pastr text "hello there" -b     # literal text, burn after read
+pastr get https://host/AbCd1234#key
+pastr ls                        # what you pasted from this machine
+pastr rm AbCd1234               # delete (uses the locally stored edit token)
 ```
 
 - Zero dependencies, Node 20+, macOS/Linux/Windows/WSL.
 - `-E` encrypts with AES-256-GCM before upload; the key is only in the URL fragment. `-p`/`-P` uses a password instead.
-- Edit tokens and link keys are kept in `~/.config/pastly/history.json` (`%APPDATA%\pastly` on Windows), mode 0600.
-- Set the host once with `pastly config host …` or `PASTLY_HOST`.
+- Edit tokens and link keys are kept in `~/.config/pastr/history.json` (`%APPDATA%\pastr` on Windows), mode 0600.
+- Set the host once with `pastr config host …` or `PASTR_HOST`.
 
-Prefer no Node at all? Every pastly instance serves a tiny POSIX shell version: `curl -fsSL https://your-pastly.example/install.sh | sh`.
+Prefer no Node at all? Every pastr instance serves a tiny POSIX shell version: `curl -fsSL https://your-pastr.example/install.sh | sh`.

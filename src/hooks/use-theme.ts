@@ -26,11 +26,11 @@ function subscribe(cb: () => void) {
   };
   mq.addEventListener("change", onMq);
   window.addEventListener("storage", cb);
-  window.addEventListener("pastly:theme", cb);
+  window.addEventListener("pastr:theme", cb);
   return () => {
     mq.removeEventListener("change", onMq);
     window.removeEventListener("storage", cb);
-    window.removeEventListener("pastly:theme", cb);
+    window.removeEventListener("pastr:theme", cb);
   };
 }
 
@@ -44,7 +44,7 @@ export function useTheme() {
       /* ignore */
     }
     apply(t);
-    window.dispatchEvent(new Event("pastly:theme"));
+    window.dispatchEvent(new Event("pastr:theme"));
   }, []);
 
   const cycle = useCallback(() => {

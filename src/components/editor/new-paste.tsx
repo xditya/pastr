@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { Editor } from "./editor";
 
-const FORK_KEY = "pastly:fork";
+const FORK_KEY = "pastr:fork";
 
 export function stashFork(data: { content: string; title?: string; lang?: string }) {
   try {

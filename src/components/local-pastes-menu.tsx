@@ -41,7 +41,7 @@ export function LocalPastesMenu() {
     const blob = new Blob([exportLocal()], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "pastly-history.json";
+    a.download = "pastr-history.json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
@@ -51,7 +51,7 @@ export function LocalPastesMenu() {
       const n = importLocal(await file.text());
       push("success", `Imported ${n} paste${n === 1 ? "" : "s"}`);
     } catch {
-      push("error", "That file isn't a pastly history export");
+      push("error", "That file isn't a pastr history export");
     }
   };
 

@@ -26,8 +26,8 @@ export type Prefs = {
   encryptByDefault: boolean;
 };
 
-const PASTES_KEY = "pastly:pastes";
-const PREFS_KEY = "pastly:prefs";
+const PASTES_KEY = "pastr:pastes";
+const PREFS_KEY = "pastr:prefs";
 const MAX_LOCAL = 200;
 
 function read<T>(key: string, fallback: T): T {
@@ -43,7 +43,7 @@ function read<T>(key: string, fallback: T): T {
 function write(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-    window.dispatchEvent(new Event("pastly:local"));
+    window.dispatchEvent(new Event("pastr:local"));
   } catch {
     /* quota / private mode */
   }
@@ -78,13 +78,13 @@ export function updateLocalPaste(id: string, patch: Partial<LocalPaste>) {
 
 /** JSON export of everything this browser remembers (ids, edit tokens, link keys). */
 export function exportLocal(): string {
-  return JSON.stringify({ app: "pastly", version: 1, exportedAt: new Date().toISOString(), pastes: getLocalPastes() }, null, 2);
+  return JSON.stringify({ app: "pastr", version: 1, exportedAt: new Date().toISOString(), pastes: getLocalPastes() }, null, 2);
 }
 
 /** Merge an export back in; returns how many entries were added or updated. Throws on invalid input. */
 export function importLocal(json: string): number {
   const data = JSON.parse(json) as { app?: string; pastes?: unknown };
-  if (data?.app !== "pastly" || !Array.isArray(data.pastes)) throw new Error("not a pastly export");
+  if (data?.app !== "pastr" || !Array.isArray(data.pastes)) throw new Error("not a pastr export");
   const existing = new Map(getLocalPastes().map((p) => [p.id, p]));
   let n = 0;
   for (const item of data.pastes as Array<Partial<LocalPaste>>) {
@@ -109,10 +109,10 @@ export function setPrefs(patch: Partial<Prefs>) {
 /** Subscribe to changes made by this tab or others. */
 export function onLocalChange(cb: () => void): () => void {
   if (typeof window === "undefined") return () => {};
-  window.addEventListener("pastly:local", cb);
+  window.addEventListener("pastr:local", cb);
   window.addEventListener("storage", cb);
   return () => {
-    window.removeEventListener("pastly:local", cb);
+    window.removeEventListener("pastr:local", cb);
     window.removeEventListener("storage", cb);
   };
 }

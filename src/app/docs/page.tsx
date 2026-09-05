@@ -48,18 +48,18 @@ export default async function DocsPage() {
           Paste without opening the site. The Node version supports end-to-end encryption; the shell version needs only <span className="font-mono">curl</span>.
         </p>
         <Code>{`# Node 20+ (npm) — full featured, incl. -E for encryption
-npm install -g pastly
-pastly config host ${HOST}
+npm install -g pastr
+pastr config host ${HOST}
 
 # No Node? POSIX shell + curl, with this host preconfigured
 curl -fsSL ${HOST}/install.sh | sh`}</Code>
-        <Code>{`ls -la | pastly                  # stdin
-pastly main.go --expires 1d      # files (language from the extension)
-pastly clip -E -c                # clipboard → encrypted paste, link copied back
-pastly text "hello there" -b     # literal text, burn after read
-pastly get ${HOST}/AbCd1234#key  # print (and decrypt) a paste
-pastly ls                        # pastes made from this machine
-pastly rm AbCd1234               # delete with the locally stored edit token`}</Code>
+        <Code>{`ls -la | pastr                  # stdin
+pastr main.go --expires 1d      # files (language from the extension)
+pastr clip -E -c                # clipboard → encrypted paste, link copied back
+pastr text "hello there" -b     # literal text, burn after read
+pastr get ${HOST}/AbCd1234#key  # print (and decrypt) a paste
+pastr ls                        # pastes made from this machine
+pastr rm AbCd1234               # delete with the locally stored edit token`}</Code>
 
         <H2 id="quick">Plain curl</H2>
         <Code>{`# Pipe anything in and get a link back

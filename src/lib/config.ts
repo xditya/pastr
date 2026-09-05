@@ -5,7 +5,7 @@
  */
 
 export const SITE = {
-  name: "pastly",
+  name: "pastr",
   tagline: "Paste it. Share it. Gone when you say so.",
   description:
     "A fast, clean pastebin with syntax highlighting, client-side encryption, expiry and burn-after-read.",
