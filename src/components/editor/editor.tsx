@@ -196,19 +196,34 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
     void loadFile(file);
   };
 
+  /**
+   * Rich read (images) first, plain text second; each browser denies a different one
+   * (Firefox and Safari only allow read() from their own paste affordance), so one
+   * failing must not stop the other from being tried.
+   */
   const pasteFromClipboard = async () => {
+    let text: string | null = null;
     try {
-      for (const item of (await navigator.clipboard.read?.()) ?? []) {
+      for (const item of await navigator.clipboard.read()) {
         const type = item.types.find((t) => t.startsWith("image/"));
         if (type) return void loadFile(new File([await item.getType(type)], "image.png", { type }));
+        if (item.types.includes("text/plain")) text = await (await item.getType("text/plain")).text();
       }
-      const text = await navigator.clipboard.readText();
-      if (!text) return push("info", "Clipboard is empty");
-      setContent((c) => (c ? `${c}\n${text}` : text));
-      textareaRef.current?.focus();
     } catch {
-      push("error", "Clipboard access was denied — paste with the keyboard instead");
+      /* fall through to readText */
     }
+    if (text === null) {
+      try {
+        text = await navigator.clipboard.readText();
+      } catch {
+        textareaRef.current?.focus();
+        push("error", `Clipboard access was denied. Press ${mac ? "⌘" : "Ctrl"}+V in the editor instead.`);
+        return;
+      }
+    }
+    if (!text) return push("info", "Clipboard is empty");
+    setContent((c) => (c ? `${c}\n${text}` : text));
+    textareaRef.current?.focus();
   };
 
   const onFileInput = (e: ChangeEvent<HTMLInputElement>) => {
