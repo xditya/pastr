@@ -37,7 +37,7 @@ const len = (s) => [...s].length;
 const fit = (s, n) => (len(s) > n ? [...s].slice(0, Math.max(n - 1, 0)).join("") + "…" : s.padEnd(n));
 
 /** Box-drawn table sized to the terminal; column `shrink` gives up characters first, then the widest. */
-export function table(head, rows, styles = [], shrink = -1, width = process.stdout.columns || 120) {
+export function table(head, rows, styles = [], shrink = -1, width = process.stdout.columns || 120, selected = -1) {
   const w = head.map((h, i) => Math.max(len(h), ...rows.map((r) => len(r[i]))));
   let over = w.reduce((a, b) => a + b, 0) + 3 * w.length + 1 - width;
   while (over > 0) {
@@ -48,7 +48,8 @@ export function table(head, rows, styles = [], shrink = -1, width = process.stdo
   }
   const rule = (l, m, r) => dim(l + w.map((n) => "─".repeat(n + 2)).join(m) + r);
   const line = (cells, f) => dim("│ ") + cells.map((c, i) => (f[i] ?? ((s) => s))(fit(c, w[i]))).join(dim(" │ ")) + dim(" │");
-  return [rule("╭", "┬", "╮"), line(head, head.map(() => bold)), rule("├", "┼", "┤"), ...rows.map((r) => line(r, styles)), rule("╰", "┴", "╯")].join("\n") + "\n";
+  const body = rows.map((r, i) => (i === selected ? line(r, r.map(() => paint("inverse"))) : line(r, styles)));
+  return [rule("╭", "┬", "╮"), line(head, head.map(() => bold)), rule("├", "┼", "┤"), ...body, rule("╰", "┴", "╯")].join("\n") + "\n";
 }
 
 const ok = (msg) => out(`${OUT_TTY ? green("✓ ") : ""}${msg}\n`);
@@ -422,6 +423,104 @@ function fmtRel(ms) {
   return d >= 0 ? `in ${n}${u[1]}` : `${n}${u[1]} ago`;
 }
 
+const flags = (p) => [p.encrypted && "enc", p.burn && "burn"].filter(Boolean).join(" ");
+
+/** Keys stay out of the table (`get <id>` finds them in history); the piped form has the full URL. */
+function lsTable(list, selected = -1) {
+  const head = ["id", "title", "lang", "created", "expires", "", "url"];
+  const rows = list.map((p) => [p.id, p.title || "", p.lang || "", fmtRel(p.created), p.expires ? fmtRel(p.expires) : "never", flags(p), p.url.split("#")[0]]);
+  // Narrow window: drop the url column (the id is enough for `get`) rather than mangling it.
+  const need = head.reduce((sum, h, i) => sum + 3 + Math.min(i === 1 ? 20 : Infinity, Math.max(len(h), ...rows.map((r) => len(r[i])))), 1);
+  if (need > (process.stdout.columns || 120)) for (const r of [head, ...rows]) r.pop();
+  return table(head, rows, [cyan, undefined, dim, dim, undefined, yellow, dim], 1, process.stdout.columns || 120, selected);
+}
+
+/**
+ * Interactive `ls`: arrow keys or a mouse click pick a paste, Enter (or a second click) reveals its
+ * edit token, once more copies it. Runs on the alternate screen so the shell scrollback stays clean.
+ */
+function browse(list) {
+  const { stdin, stdout } = process;
+  let sel = 0;
+  let revealed = false;
+  let msg = "";
+  let confirmDelete = false;
+  const rowsVisible = () => Math.max(3, (stdout.rows || 24) - 10);
+  const first = () => Math.min(Math.max(0, sel - rowsVisible() + 1), Math.max(0, list.length - rowsVisible()));
+  const draw = () => {
+    const p = list[sel];
+    const start = first();
+    const detail = [
+      `  ${cyan(p.id)}  ${p.title || dim("untitled")}`,
+      `  ${dim("url    ")}${link(p.url)}`,
+      `  ${dim("token  ")}${p.editToken ? (revealed ? yellow(p.editToken) : dim("•".repeat(24) + "  enter to reveal")) : dim("not on this machine")}`,
+      "",
+      confirmDelete ? yellow(`  delete ${p.id} from the server? y/n`) : msg ? `  ${msg}` : dim("  ↑↓ move · enter reveal, again to copy token · c copy url · o open · d delete · q quit"),
+    ];
+    stdout.write("\x1b[H\x1b[2J" + lsTable(list.slice(start, start + rowsVisible()), sel - start) + detail.join("\n") + "\n");
+  };
+  const enter = async () => {
+    const p = list[sel];
+    if (!p.editToken) return (msg = yellow("no token stored for this paste"));
+    if (!revealed) return (revealed = true);
+    msg = writeClipboard(p.editToken) ? green("✓ token copied") : yellow("could not copy");
+  };
+  const select = (i) => {
+    if (i === sel || i < 0 || i >= list.length) return false;
+    sel = i;
+    revealed = false;
+    msg = "";
+    return true;
+  };
+  return new Promise((resolve) => {
+    const done = () => {
+      stdout.write("\x1b[?1006l\x1b[?1000l\x1b[?25h\x1b[?1049l");
+      stdin.setRawMode(false);
+      stdin.pause();
+      resolve();
+    };
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+    stdout.write("\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h");
+    draw();
+    stdin.on("data", async (k) => {
+      const mouse = /^\x1b\[<(\d+);(\d+);(\d+)M/.exec(k);
+      if (confirmDelete) {
+        confirmDelete = false;
+        if (k === "y") {
+          const p = list[sel];
+          try {
+            await api(new URL(p.url).origin, `/api/v1/pastes/${p.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${p.editToken}` } });
+            forget(p.id);
+            list.splice(sel, 1);
+            if (!list.length) return done();
+            sel = Math.min(sel, list.length - 1);
+            msg = green(`✓ deleted ${p.id}`);
+          } catch (err) {
+            msg = yellow(err.message);
+          }
+        }
+      } else if (mouse) {
+        const [, button, , y] = mouse.map(Number);
+        if (button === 64) select(sel - 1);
+        else if (button === 65) select(sel + 1);
+        else if (button === 0) {
+          const i = y - 4 + first(); // 3 header lines above the first row
+          if (i >= 0 && i < list.length && !select(i)) await enter();
+        }
+      } else if (k === "\x1b[A" || k === "k") select(sel - 1);
+      else if (k === "\x1b[B" || k === "j") select(sel + 1);
+      else if (k === "\r") await enter();
+      else if (k === "c") msg = writeClipboard(list[sel].url) ? green("✓ url copied") : yellow("could not copy");
+      else if (k === "o") openInBrowser(list[sel].url);
+      else if (k === "d") confirmDelete = !!list[sel].editToken || ((msg = yellow("no token stored for this paste")), false);
+      else if (k === "q" || k === "\x1b" || k === "\x03") return done();
+      draw();
+    });
+  });
+}
+
 export async function main(argv) {
   const { values: o, positionals } = parseArgs({
     args: argv,
@@ -461,20 +560,15 @@ export async function main(argv) {
 
   if (cmd === "ls") {
     const list = getHistory();
+    if (o.json) return out(JSON.stringify(list, null, 2) + "\n");
     if (!list.length) return out(`no pastes yet${OUT_TTY ? dim(` · try: ls -la | ${NAME}`) : ""}\n`);
-    const flags = (p) => [p.encrypted && "enc", p.burn && "burn"].filter(Boolean).join(" ");
     // Piped: one tab-separated line per paste, ISO dates. TTY: a table sized to the window.
     if (!OUT_TTY) {
       for (const p of list) out([p.id, p.title || "", p.lang || "", new Date(p.created).toISOString(), p.expires ? new Date(p.expires).toISOString() : "never", flags(p), p.url].join("\t") + "\n");
       return;
     }
-    const head = ["id", "title", "lang", "created", "expires", "", "url"];
-    // Keys stay out of the table (`get <id>` finds them in history); the piped form has the full URL.
-    const rows = list.map((p) => [p.id, p.title || "", p.lang || "", fmtRel(p.created), p.expires ? fmtRel(p.expires) : "never", flags(p), p.url.split("#")[0]]);
-    // Narrow window: drop the url column (the id is enough for `get`) rather than mangling it.
-    const need = head.reduce((sum, h, i) => sum + 3 + Math.min(i === 1 ? 20 : Infinity, Math.max(len(h), ...rows.map((r) => len(r[i])))), 1);
-    if (need > (process.stdout.columns || 120)) for (const r of [head, ...rows]) r.pop();
-    out(table(head, rows, [cyan, undefined, dim, dim, undefined, yellow, dim], 1));
+    if (process.stdin.isTTY) return browse(list);
+    out(lsTable(list));
     return out(dim(`  ${list.length} ${list.length === 1 ? "paste" : "pastes"} · ${NAME} get <id> · ${NAME} rm <id>\n`));
   }
 
