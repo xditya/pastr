@@ -83,7 +83,7 @@ check "$(curl -s -o /dev/null -w '%{http_code}' $BASE/api/v1/admin/pastes)" "404
 check "$(curl -s "$BASE/?text=shared+text&title=From+share" | grep -c 'shared text')" "1" "share-target prefill renders"
 check "$(curl -s $BASE/api/v1/info | py 'str(len(d["expiries"]))+"|"+d["defaultExpiry"]')" "6|7d" "info lists expiries"
 
-# ---- short links ----
+# ---- short links + previews ----
 L=$(curl -s -H "$A" -H "$J" -d '{"content":"https://example.com/some/path?x=1"}' $BASE/api/v1/pastes)
 LID=$(echo "$L" | py 'd["id"]'); check "$(echo "$L" | py 'd["kind"]+"|"+d["link"]')" "link|https://example.com/some/path?x=1" "create returns kind=link"
 check "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' $BASE/$LID)" "307 https://example.com/some/path?x=1" "short link redirects"
@@ -93,8 +93,12 @@ check "$(curl -s $BASE/$LID/raw)" "https://example.com/some/path?x=1" "raw of a 
 check "$(curl -s -H "$A" $BASE/api/v1/pastes/$LID | py 'd["kind"]')" "link" "api read kind=link"
 check "$(curl -s -H "$A" -H "$J" -d '{"content":"https://example.com/two\nlines"}' $BASE/api/v1/pastes | py 'd["kind"]')" "text" "two lines are text"
 BL=$(curl -s -H "$A" -H "$J" -d '{"content":"https://example.com/","burn":true}' $BASE/api/v1/pastes | py 'd["id"]'); check "$(curl -s -o /dev/null -w '%{http_code}' $BASE/$BL)" "200" "burn link pastes do not redirect"
+check "$(curl -s -o /dev/null -w '%{http_code} %{content_type}' $BASE/opengraph-image)" "200 image/png" "site og image"
+check "$(curl -s -o /dev/null -w '%{http_code} %{content_type}' $BASE/$LID/opengraph-image)" "200 image/png" "link og image"
 PNG='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 IMG=$(curl -s -H "$A" -H "$J" -d "{\"content\":\"$PNG\",\"lang\":\"png\"}" $BASE/api/v1/pastes | py 'd["id"]+"|"+d["kind"]'); check "$(echo "$IMG" | cut -d'|' -f2)" "image" "image paste kind"
+check "$(curl -s -o /dev/null -w '%{http_code} %{content_type}' $BASE/$(echo "$IMG" | cut -d'|' -f1)/opengraph-image)" "200 image/png" "image og image renders"
+check "$(curl -s $BASE/ | grep -o 'og:image" content="[^"]*' | head -1 | grep -c opengraph-image)" "1" "home has og:image"
 check "$(curl -s $BASE/manifest.webmanifest | py 'str(len(d["icons"]))')" "3" "manifest lists 3 icons"
 for f in /icon.svg /apple-icon.png /favicon.ico /icons/icon-192.png /icons/icon-512.png /icons/maskable-512.png; do check "$(curl -s -o /dev/null -w '%{http_code}' "$BASE$f")" "200" "icon $f"; done
 

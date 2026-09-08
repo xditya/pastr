@@ -9,8 +9,11 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"], weight: ["400", "500", "600"], display: "swap" });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"], weight: ["400", "500"], display: "swap" });
 
+/** Absolute base for social images: NEXT_PUBLIC_SITE_URL, else Vercel's production URL, else localhost. */
+const metadataBase = new URL(env.siteUrl ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000"));
+
 export const metadata: Metadata = {
-  metadataBase: env.siteUrl ? new URL(env.siteUrl) : undefined,
+  metadataBase,
   title: { default: `${SITE.name} — ${SITE.tagline}`, template: `%s · ${SITE.name}` },
   description: SITE.description,
   applicationName: SITE.name,
