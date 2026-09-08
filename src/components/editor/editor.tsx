@@ -494,7 +494,7 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
           </div>
         ) : (
         <>
-        <div ref={gutterRef} aria-hidden className="code select-none overflow-hidden border-r border-border bg-surface-2/60 py-3 text-right text-[var(--gutter)]">
+        <div ref={gutterRef} aria-hidden className="code editor-gutter select-none overflow-hidden border-r border-border bg-surface-2/60 py-3 text-right text-[var(--gutter)]">
           {gutter}
         </div>
         <textarea

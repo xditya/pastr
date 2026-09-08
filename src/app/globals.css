@@ -158,14 +158,35 @@
   background: var(--line-hl);
 }
 
-/* Editor textarea shares metrics with the gutter so line numbers align. */
+/* Editor textarea and gutter share metrics so line numbers align. The size is a variable because
+   it grows on touch screens (see the coarse-pointer block below). */
+:root {
+  --editor-font-size: 13.5px;
+}
+.editor-gutter,
 .editor-textarea {
   font-family: var(--font-mono);
-  font-size: 13.5px;
+  font-size: var(--editor-font-size);
   line-height: 1.6;
   tab-size: 4;
+}
+.editor-textarea {
   white-space: pre;
   overflow: auto;
+}
+
+/* iOS Safari zooms the whole page when a focused input, select or textarea is under 16px, so on
+   touch screens every text control is 16px. Unlayered on purpose: it has to beat the text-[…px]
+   utilities that size the controls on desktop. */
+@media (pointer: coarse) {
+  :root {
+    --editor-font-size: 16px;
+  }
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
 
 /* ---------- Prose (rendered markdown) --------------------------------------- */

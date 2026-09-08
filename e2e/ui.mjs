@@ -180,9 +180,34 @@ check("docs page", (await page.locator("h1").count()) > 0);
 await page.screenshot({ path: `${OUT}/08-docs.png`, fullPage: true });
 await page.goto(BASE + "/zzzzzzzz");
 check("404 page", (await page.locator("text=Nothing here").count()) > 0);
-const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true });
+// iOS Safari zooms the page when a focused control is under 16px, so on touch screens every control must be 16px+.
+await page.goto(BASE + "/");
+check("desktop keeps the 13.5px editor", await page.evaluate(() => !matchMedia("(pointer: coarse)").matches && getComputedStyle(document.querySelector(".editor-textarea")).fontSize === "13.5px"));
+const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 const mp = await mobile.newPage();
+const controlSizes = (pg) =>
+  pg.evaluate(() =>
+    [...document.querySelectorAll("input:not([type=hidden]):not([type=file]), select, textarea")]
+      .filter((el) => el.getClientRects().length)
+      .map((el) => `${el.getAttribute("aria-label") || el.name || el.tagName}=${getComputedStyle(el).fontSize}`),
+  );
+const allBig = (sizes) => sizes.length > 0 && sizes.every((s) => parseFloat(s.split("=")[1]) >= 16);
 await mp.goto(BASE + "/");
+check("mobile context is a coarse pointer", await mp.evaluate(() => matchMedia("(pointer: coarse)").matches));
+let sizes = await controlSizes(mp);
+check("home controls are 16px+ on touch", sizes.length >= 3 && allBig(sizes), sizes.join(", "));
+check(
+  "editor gutter matches textarea metrics on touch",
+  await mp.evaluate(() => {
+    const g = getComputedStyle(document.querySelector(".editor-gutter"));
+    const t = getComputedStyle(document.querySelector(".editor-textarea"));
+    return g.fontSize === t.fontSize && g.lineHeight === t.lineHeight && g.fontFamily === t.fontFamily && parseFloat(t.fontSize) >= 16;
+  }),
+);
+await mp.click('button[aria-label="Your pastes"]');
+sizes = await controlSizes(mp);
+check("open-by-id input is 16px+ on touch", sizes.some((s) => s.startsWith("Open a paste")) && allBig(sizes), sizes.join(", "));
+await mp.click('button[aria-label="Your pastes"]');
 await mp.screenshot({ path: `${OUT}/09-mobile-home.png` });
 await mp.goto(pasteUrl);
 await mp.waitForSelector("h1");
