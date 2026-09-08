@@ -95,6 +95,8 @@ check "$(curl -s -H "$A" -H "$J" -d '{"content":"https://example.com/two\nlines"
 BL=$(curl -s -H "$A" -H "$J" -d '{"content":"https://example.com/","burn":true}' $BASE/api/v1/pastes | py 'd["id"]'); check "$(curl -s -o /dev/null -w '%{http_code}' $BASE/$BL)" "200" "burn link pastes do not redirect"
 PNG='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 IMG=$(curl -s -H "$A" -H "$J" -d "{\"content\":\"$PNG\",\"lang\":\"png\"}" $BASE/api/v1/pastes | py 'd["id"]+"|"+d["kind"]'); check "$(echo "$IMG" | cut -d'|' -f2)" "image" "image paste kind"
+check "$(curl -s $BASE/manifest.webmanifest | py 'str(len(d["icons"]))')" "3" "manifest lists 3 icons"
+for f in /icon.svg /apple-icon.png /favicon.ico /icons/icon-192.png /icons/icon-512.png /icons/maskable-512.png; do check "$(curl -s -o /dev/null -w '%{http_code}' "$BASE$f")" "200" "icon $f"; done
 
 # ---- CLI (Node) against the same server ----
 export PASTR_CONFIG_DIR=$(mktemp -d)

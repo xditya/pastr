@@ -10,7 +10,11 @@ export default function manifest(): MetadataRoute.Manifest {
     display: "standalone",
     background_color: "#f4f5f7",
     theme_color: "#f4f5f7",
-    icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
+    icons: [
+      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
     // Android "Share to pastr": prefill the editor from the share sheet (installed PWA).
     share_target: { action: "/", method: "GET", params: { title: "title", text: "text", url: "url" } },
   } as MetadataRoute.Manifest;

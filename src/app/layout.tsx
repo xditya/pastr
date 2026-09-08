@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   title: { default: `${SITE.name} — ${SITE.tagline}`, template: `%s · ${SITE.name}` },
   description: SITE.description,
   applicationName: SITE.name,
-  icons: { icon: "/icon.svg" },
+  // icon.svg, apple-icon.png and favicon.ico are picked up from the app directory automatically.
   openGraph: { siteName: SITE.name, type: "website" },
   twitter: { card: "summary_large_image" },
 };
