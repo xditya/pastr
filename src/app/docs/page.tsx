@@ -165,7 +165,7 @@ curl -H 'Authorization: Bearer $ADMIN_TOKEN' '${HOST}/api/v1/admin/pastes?limit=
 curl -H 'Authorization: Bearer $ADMIN_TOKEN' '${HOST}/api/v1/admin/pastes?sort=reports'      # most reported
 curl -X DELETE -H 'Authorization: Bearer $ADMIN_TOKEN' ${HOST}/api/v1/pastes/AbCd1234        # remove anything`}</Code>
         <p className="mt-3 text-[13px] text-fg-muted">
-          Listings never include content. Reports are kept for 30 days with a salted hash of the reporter, and optionally forwarded to <span className="font-mono">REPORT_WEBHOOK_URL</span>. Set <span className="font-mono">MAX_EXPIRY</span> (for example <span className="font-mono">30d</span>) to cap how long pastes may live.
+          Listings never include content. Reports are kept for 30 days with a salted hash of the reporter. Notifications are off by default: set <span className="font-mono">TELEGRAM_BOT_TOKEN</span> and <span className="font-mono">TELEGRAM_CHAT_ID</span> for Telegram messages with Open and Remove buttons (<span className="font-mono">POST /api/v1/admin/telegram</span> registers the button&apos;s webhook if auto-setup didn&apos;t run), or <span className="font-mono">REPORT_WEBHOOK_URL</span> for a Discord-compatible webhook. Set <span className="font-mono">MAX_EXPIRY</span> (for example <span className="font-mono">30d</span>) to cap how long pastes may live.
         </p>
 
         <H2 id="security">Security model</H2>

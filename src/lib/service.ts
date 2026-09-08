@@ -11,6 +11,7 @@ import { type PasteRecord, type PublicPaste, toPublic } from "./paste";
 import { getStore } from "./store";
 import { hashToken, newEditToken, safeEqual, verifyToken } from "./tokens";
 import { createPasteSchema, firstIssue, reportSchema, updatePasteSchema } from "./validation";
+import { notifyReport, pasteLink, telegramConfig } from "./telegram";
 
 export type CreatedPaste = { paste: PublicPaste; editToken: string };
 
@@ -203,14 +204,28 @@ async function reporterId(ip: string): Promise<string> {
   return Array.from(new Uint8Array(digest).slice(0, 8), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function reportPaste(id: string, raw: Record<string, unknown>, ip: string): Promise<{ ok: true; count: number }> {
+/** Operator removal (Telegram "Remove" button, admin tooling): no token check, returns whether it existed. */
+export async function removePaste(id: string): Promise<boolean> {
+  if (!isValidId(id)) return false;
+  return getStore().delete(id);
+}
+
+export async function reportPaste(id: string, raw: Record<string, unknown>, ip: string, origin: string): Promise<{ ok: true; count: number }> {
   assertId(id);
   const parsed = reportSchema.safeParse(raw);
   if (!parsed.success) throw new HttpError(400, "invalid", firstIssue(parsed.error));
   const exists = await getStore().peek(id);
   if (!exists) throw new HttpError(404, "not_found", "paste not found");
   const reason = parsed.data.reason;
-  const count = await getStore().report(id, reason, await reporterId(ip));
+  const reporter = await reporterId(ip);
+  const count = await getStore().report(id, reason, reporter);
+  const paste = toPublic(exists.record, exists.views);
+  const url = pasteLink(origin, paste);
+
+  // Notifications are best effort and never delay the response. Both channels are off by default.
+  const telegram = telegramConfig();
+  if (telegram) background(() => notifyReport(telegram, { paste, origin, reason, count, reporter }));
+
   const webhook = env.reportWebhookUrl;
   if (webhook) {
     // Discord-compatible payload (mentions disabled, reason fenced); other webhooks get the same JSON.
@@ -221,9 +236,10 @@ export async function reportPaste(id: string, raw: Record<string, unknown>, ip: 
         signal: AbortSignal.timeout(5000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: `Paste reported: ${id} (report #${count})\n${fenced}`,
+          content: `Paste reported: ${url} (report #${count})\n${fenced}`,
           allowed_mentions: { parse: [] },
           paste: id,
+          url,
           reason,
           count,
         }),

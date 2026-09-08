@@ -102,6 +102,19 @@ check "$(curl -s $BASE/ | grep -o 'og:image" content="[^"]*' | head -1 | grep -c
 check "$(curl -s $BASE/manifest.webmanifest | py 'str(len(d["icons"]))')" "3" "manifest lists 3 icons"
 for f in /icon.svg /apple-icon.png /favicon.ico /icons/icon-192.png /icons/icon-512.png /icons/maskable-512.png; do check "$(curl -s -o /dev/null -w '%{http_code}' "$BASE$f")" "200" "icon $f"; done
 
+ID2=$(curl -s -H "$A" -H "$J" -d '{"content":"report target"}' $BASE/api/v1/pastes | py 'd["id"]')
+# ---- telegram webhook (server started with TELEGRAM_BOT_TOKEN=123:test TELEGRAM_CHAT_ID=42) ----
+TG=$(curl -s -H "$A" -H "$J" -d '{"content":"remove me via telegram"}' $BASE/api/v1/pastes | py 'd["id"]')
+SECRET=$(printf '%s' '123:test|pastr-telegram-webhook' | sha256sum | cut -d' ' -f1)
+check "$(curl -s -o /dev/null -w '%{http_code}' -H "$J" -d '{}' $BASE/api/v1/telegram/webhook)" "403" "telegram webhook rejects missing secret"
+check "$(curl -s -o /dev/null -w '%{http_code}' -H "$J" -H 'x-telegram-bot-api-secret-token: nope' -d '{}' $BASE/api/v1/telegram/webhook)" "403" "telegram webhook rejects wrong secret"
+check "$(curl -s -H "$J" -H "x-telegram-bot-api-secret-token: $SECRET" -d "{\"callback_query\":{\"id\":\"1\",\"data\":\"rm:$TG\",\"from\":{\"id\":7,\"first_name\":\"Op\"},\"message\":{\"message_id\":5,\"chat\":{\"id\":99},\"text\":\"x\"}}}" $BASE/api/v1/telegram/webhook | py 'str(d["handled"])+"|"+d["note"]')" "False|wrong chat" "telegram remove ignores other chats"
+check "$(curl -s -o /dev/null -w '%{http_code}' $BASE/api/v1/pastes/$TG)" "200" "paste still there after foreign chat press"
+check "$(curl -s -H "$J" -H "x-telegram-bot-api-secret-token: $SECRET" -d "{\"callback_query\":{\"id\":\"1\",\"data\":\"rm:$TG\",\"from\":{\"id\":7,\"first_name\":\"Op\"},\"message\":{\"message_id\":5,\"chat\":{\"id\":42},\"text\":\"x\"}}}" $BASE/api/v1/telegram/webhook | py 'str(d["handled"])+"|"+d["note"]')" "True|removed" "telegram remove deletes the paste"
+check "$(curl -s -o /dev/null -w '%{http_code}' $BASE/api/v1/pastes/$TG)" "404" "paste gone after remove"
+check "$(curl -s -H "$J" -H "x-telegram-bot-api-secret-token: $SECRET" -d "{\"callback_query\":{\"id\":\"2\",\"data\":\"rm:$TG\",\"message\":{\"message_id\":5,\"chat\":{\"id\":42}}}}" $BASE/api/v1/telegram/webhook | py 'd["note"]')" "already gone" "telegram remove twice"
+check "$(curl -s -H "$J" -d '{"reason":"telegram spam test"}' $BASE/api/v1/pastes/$ID2/report | py 'str(d["ok"])')" "True" "report still succeeds when telegram is unreachable"
+
 # ---- CLI (Node) against the same server ----
 export PASTR_CONFIG_DIR=$(mktemp -d)
 CLI="node $(dirname "$0")/../cli/pastr.mjs"

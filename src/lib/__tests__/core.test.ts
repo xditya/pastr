@@ -170,3 +170,21 @@ describe("links", () => {
     expect(pasteKind({ content: "iVBORw0KGgo=", lang: "png" })).toBe("image");
   });
 });
+
+describe("telegram report messages", () => {
+  it("formats an escaped HTML message with the paste link", async () => {
+    const { formatReportMessage, pasteLink, webhookSecret } = await import("../telegram");
+    const paste = { id: "AbCd1234", content: "<b>x</b>", lang: "go", burn: true, created: 0, expires: null, size: 10, views: 3 };
+    const msg = formatReportMessage({ paste, origin: "https://p.example", reason: "spam <script>", count: 2, reporter: "ab12" });
+    expect(msg).toContain("report #2");
+    expect(msg).toContain('href="https://p.example/AbCd1234"');
+    expect(msg).toContain("burn after read");
+    expect(msg).toContain("never expires");
+    expect(msg).toContain("&lt;script&gt;");
+    expect(msg).not.toContain("<script>");
+    expect(pasteLink("https://p.example", { ...paste, content: "https://example.com/x", lang: "text" })).toBe("https://p.example/AbCd1234+");
+    const secret = await webhookSecret("123:abc");
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    expect(await webhookSecret("123:abc")).toBe(secret);
+  });
+});

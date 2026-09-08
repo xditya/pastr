@@ -130,7 +130,24 @@ A page view costs two REST round trips (a peek pipeline, then one Lua script tha
 - Per-IP sliding-window rate limits cover create, read (API, pages and OG images), mutate and report. Request bodies are capped while streaming rather than trusting `Content-Length`; content is capped at 1 MiB (images at 700 KB before base64) and titles at 120 characters.
 - Encrypted pastes can only be updated with fresh encryption metadata, so an IV is never reused.
 - Burn-after-read runs as one atomic Lua script, so two readers can never both see the content.
-- Reports store a salted hash of the reporter's IP for 30 days, never the IP itself. They can be forwarded to a webhook with mentions disabled. `ADMIN_TOKEN` lets an operator delete anything.
+- Reports store a salted hash of the reporter's IP for 30 days, never the IP itself. `ADMIN_TOKEN` lets an operator delete anything.
+
+## Abuse reports
+
+Every paste has a Report button. Reports are kept in Redis for 30 days and listed with `GET /api/v1/admin/pastes?sort=reports` (Bearer `ADMIN_TOKEN`). Notifications are **off by default**; pick either or both:
+
+| Channel | Set | What you get |
+| --- | --- | --- |
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | A message per report with the link to the paste, its type, size and the reason, plus **Open** and **Remove** buttons. Remove deletes the paste from the chat. |
+| Webhook | `REPORT_WEBHOOK_URL` | Discord-compatible JSON (`content` with the link and fenced reason, mentions disabled, plus `paste`, `url`, `reason`, `count`). |
+
+Telegram setup:
+
+1. Message [@BotFather](https://t.me/BotFather), send `/newbot`, and copy the token into `TELEGRAM_BOT_TOKEN`.
+2. Start a chat with your bot (or add it to a group) and send it any message. Read the chat id from `https://api.telegram.org/bot<token>/getUpdates` (`message.chat.id`) and put it in `TELEGRAM_CHAT_ID`.
+3. Set `NEXT_PUBLIC_SITE_URL` to your public origin. The Remove button needs a webhook, which the app registers automatically the first time it sends a report. To register or check it by hand: `curl -X POST -H 'Authorization: Bearer $ADMIN_TOKEN' https://your-host/api/v1/admin/telegram` (`GET` shows the current status).
+
+Only presses from the configured chat are honoured, and Telegram authenticates its calls with a secret derived from the bot token.
 - `HEAD` requests never count views or burn pastes, so link checkers are safe. Every `GET` that returns content does consume a burn-after-read paste.
 
 ## Compared with pasty
