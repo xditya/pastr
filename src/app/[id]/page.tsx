@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { extractLink, linkHost } from "@/lib/links";
 import { headers } from "next/headers";
 import { SITE } from "@/lib/config";
 import { getLang, imageMime, splitIdAndLang } from "@/lib/langs";
@@ -26,7 +27,17 @@ function fnv1a(str: string): string {
 type Props = PageProps<"/[id]">;
 
 async function resolve(props: Props) {
-  const { id: segment } = await props.params;
+  const { id: raw } = await props.params;
+  // A trailing "+" (like bit.ly) asks for the preview page of a short link instead of the redirect.
+  // The segment may arrive percent-encoded ("%2B") depending on which render pass asks, so decode first.
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    /* keep as is */
+  }
+  const preview = /[+ ]$/.test(decoded);
+  const segment = decoded.replace(/[+ ]+$/, "");
   const { id, lang: suffix } = splitIdAndLang(segment);
   await limitPageReads();
   const view = await getView(id);
@@ -34,7 +45,9 @@ async function resolve(props: Props) {
   // A URL suffix picks the highlighter; it cannot turn text into an image or an image into text.
   const suffixLang = suffix ? getLang(suffix)?.id : undefined;
   const override = suffixLang && !imageMime(suffixLang) && !imageMime(view.paste.lang) ? suffixLang : undefined;
-  return { id, view, override };
+  // Plain pastes that are exactly one URL act as short links (never encrypted or burn pastes).
+  const link = view.mode === "plain" && !imageMime(view.paste.lang) ? extractLink(view.paste.content) : null;
+  return { id, view, override, link, preview };
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
@@ -45,15 +58,17 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     if (err instanceof HttpError && err.status === 429) return { title: "Slow down", robots: { index: false } };
     throw err;
   }
-  const { id, view } = resolved;
+  const { id, view, link } = resolved;
   const { paste } = view;
   const origin = await requestOrigin();
-  const title = paste.title ?? (view.mode === "encrypted" ? "Encrypted paste" : view.mode === "burn" ? "Burn-after-read paste" : `Paste ${id}`);
+  const title = paste.title ?? (link ? `Short link to ${linkHost(link)}` : view.mode === "encrypted" ? "Encrypted paste" : view.mode === "burn" ? "Burn-after-read paste" : `Paste ${id}`);
   const description =
     view.mode === "plain"
-      ? imageMime(paste.lang)
-        ? `${getLang(paste.lang)?.label}, ${formatBytes(paste.size)}`
-        : paste.content.split("\n").slice(0, 3).join(" ").slice(0, 160) || SITE.description
+      ? link
+        ? `${origin.replace(/^https?:\/\//, "")}/${id} redirects to ${link.slice(0, 120)}`
+        : imageMime(paste.lang)
+          ? `${getLang(paste.lang)?.label}, ${formatBytes(paste.size)}`
+          : paste.content.split("\n").slice(0, 3).join(" ").slice(0, 160) || SITE.description
       : view.mode === "burn"
         ? "This paste self-destructs after it is viewed once."
         : "This paste is end-to-end encrypted. Only someone with the key can read it.";
@@ -62,8 +77,8 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     title,
     description,
     robots: { index: false, follow: false },
-    openGraph: { title, description, type: "article", url: `${origin}/${id}`, images: [{ url: `${origin}/${id}/opengraph-image`, width: 1200, height: 630 }] },
-    twitter: { card: "summary_large_image", title, description, images: [`${origin}/${id}/opengraph-image`] },
+    openGraph: { title, description, type: "article", url: `${origin}/${id}`, images: [{ url: `${origin}/${id}/opengraph-image`, width: 1200, height: 630, alt: title }] },
+    twitter: { card: "summary_large_image", title, description, images: [{ url: `${origin}/${id}/opengraph-image`, alt: title }] },
     alternates: { canonical: `${origin}/${id}` },
   };
 }
@@ -101,9 +116,11 @@ export default async function PastePage(props: Props) {
     if (err instanceof HttpError && err.status === 429) return <RateLimited />;
     throw err;
   }
-  const { view, override } = resolved;
+  const { view, override, link, preview } = resolved;
   const search = await props.searchParams;
   const embed = search.embed === "1"; // must match proxy.ts, which only lifts framing rules for embed=1
+  // Short link: send the visitor on (the read above already counted this visit). "+" or ?preview shows the page.
+  if (link && !preview && search.preview === undefined && !embed) redirect(link);
   const origin = await requestOrigin();
 
   const lang = override ?? view.paste.lang;
@@ -121,6 +138,7 @@ export default async function PastePage(props: Props) {
       origin={origin}
       embed={embed}
       sizeLabel={formatBytes(view.paste.size)}
+      link={link ?? undefined}
     />
   );
 

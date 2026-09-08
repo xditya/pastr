@@ -8,6 +8,7 @@ import { DEFAULT_EXPIRY, EXPIRIES, LIMITS } from "@/lib/config";
 import { base64Bytes, byteLength, formatBytes } from "@/lib/bytes";
 import { detectLang } from "@/lib/detect";
 import { LANGS, imageMime, langFromFilename, langFromMime } from "@/lib/langs";
+import { extractLink, linkHost } from "@/lib/links";
 import { encryptEnvelope, reencryptEnvelope } from "@/lib/crypto";
 import type { EncryptionMeta } from "@/lib/paste";
 import { api, ApiError } from "@/lib/client";
@@ -99,6 +100,9 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
   const tooLarge = effectiveBytes > maxBytes;
   /** Heuristic scan for credentials so people don't publish keys by accident (never sent anywhere). */
   const secrets = useMemo(() => (edit?.enc || encrypt || image ? [] : findSecrets(content)), [content, encrypt, edit?.enc, image]);
+  /** A paste that is exactly one URL becomes a short link (unless it is encrypted or burn-after-read). */
+  const link = useMemo(() => (image || edit ? null : extractLink(content)), [content, image, edit]);
+  const shortens = !!link && !encrypt && !burn;
   const canSave = content.trim().length > 0 && !tooLarge && !saving && (!encrypt || !usePassword || password.length > 0);
   const dirty = content !== (edit?.content ?? initial?.content ?? "") || title !== (edit?.title ?? initial?.title ?? "");
 
@@ -318,8 +322,9 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
         key: fragment,
         encrypted: encrypt,
       });
-      const target = `/${created.id}${fragment ? `#${fragment}` : ""}`;
+      const target = shortens ? `/${created.id}+` : `/${created.id}${fragment ? `#${fragment}` : ""}`;
       onSaved?.({ id: created.id, content, title: cleanTitle, lang: finalLang, enc: body.enc });
+      if (shortens && link) push("success", `Short link ready: ${window.location.host}/${created.id} → ${linkHost(link)}`);
       router.push(target);
     } catch (err) {
       if (err instanceof ApiError && (err.status === 401 || err.status === 403) && onAuthError) {
@@ -331,7 +336,7 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
       push("error", msg);
       setSaving(false);
     }
-  }, [canSave, lang, content, title, expiry, encrypt, edit, push, onSaved, onAuthError, usePassword, password, burn, router]);
+  }, [canSave, lang, content, title, expiry, encrypt, edit, push, onSaved, onAuthError, usePassword, password, burn, router, shortens, link]);
 
   useHotkeys(
     useMemo(
@@ -504,7 +509,7 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
-          placeholder="Paste or type here…"
+          placeholder="Paste or type here… a lone link becomes a short link."
           aria-label="Paste content"
           className="editor-textarea min-h-[60vh] flex-1 resize-none bg-transparent px-4 py-3 outline-none placeholder:text-fg-faint"
         />
@@ -529,14 +534,18 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
         <noscript>
           <span>Encryption and burn-after-read need JavaScript.</span>
         </noscript>
-        <span className="ml-auto hidden shrink-0 truncate md:inline">
-          {encrypt
-            ? usePassword
-              ? "the password never leaves your browser"
-              : "the key lives in the link after #"
-            : burn
-              ? "destroyed after the first view"
-              : "drop a file or image anywhere"}
+        <span className={cn("ml-auto hidden shrink-0 truncate md:inline", shortens && "text-fg")}>
+          {link
+            ? shortens
+              ? `looks like a link — save to get a short link that redirects to ${linkHost(link)}`
+              : "encrypted and burn pastes don’t redirect; saved as text"
+            : encrypt
+              ? usePassword
+                ? "the password never leaves your browser"
+                : "the key lives in the link after #"
+              : burn
+                ? "destroyed after the first view"
+                : "drop a file, an image, or a link to shorten"}
         </span>
       </div>
       </div>

@@ -11,6 +11,8 @@ import { highlightLinesClient } from "@/lib/highlight-client";
 import { escapeHtml } from "@/lib/highlight-shared";
 import { formatRelative } from "@/lib/expiry";
 import { getLang, imageMime, LANGS } from "@/lib/langs";
+import { linkHost } from "@/lib/links";
+import { ShortLinkPanel } from "./short-link";
 import { forgetPaste, getLocalPaste, rememberPaste, setPrefs, updateLocalPaste } from "@/lib/local";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useLocalPaste, useMounted, usePrefs } from "@/hooks/use-local";
@@ -40,11 +42,13 @@ type Props = {
   origin: string;
   embed: boolean;
   sizeLabel: string;
+  /** Target URL when this paste is a short link (plain, single-URL pastes). */
+  link?: string;
 };
 
 type Revealed = { content: string; title?: string; lang: string; enc?: EncryptionMeta; secret?: { fragment: string } | { password: string } };
 
-export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLabel }: Props) {
+export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLabel, link }: Props) {
   const router = useRouter();
   const { push } = useToast();
 
@@ -347,7 +351,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
               <span className="truncate">{title || <span className="font-mono text-fg-muted">{paste.id}</span>}</span>
             </h1>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-fg-muted">
-              <span>{paste.enc && !revealed ? "encrypted" : langLabel}</span>
+              <span>{link ? `short link → ${linkHost(link)}` : paste.enc && !revealed ? "encrypted" : langLabel}</span>
               <span aria-hidden>·</span>
               <time dateTime={new Date(paste.created).toISOString()} title={mounted ? new Date(paste.created).toLocaleString() : undefined} suppressHydrationWarning>
                 {mounted ? formatRelative(paste.created) : isoMinute(paste.created)}
@@ -477,6 +481,8 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
           {/* eslint-disable-next-line @next/next/no-img-element -- data URL, unknown dimensions */}
           <img src={`data:${image};base64,${revealed.content}`} alt={title ?? paste.id} className="max-h-[80vh] max-w-full rounded" />
         </div>
+      ) : link ? (
+        <ShortLinkPanel link={link} shortUrl={`${origin}/${paste.id}`} views={paste.views} />
       ) : isMarkdown && preview ? (
         <MarkdownView source={revealed.content} />
       ) : (

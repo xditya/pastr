@@ -159,6 +159,21 @@ await p3.reload();
 check("burned paste is gone (404)", (await p3.locator("text=Nothing here").count()) > 0);
 await ctx3.close();
 
+// ---- Short link
+await page.goto(BASE + "/");
+await setSwitch(page, "Encrypt in browser", false);
+await setSwitch(page, "Burn after read", false);
+await page.fill("textarea[name=content]", "https://example.com/some/long/path?utm=1");
+check("editor hints about shortening", (await page.locator("form").innerText()).includes("short link"));
+await page.click('button[type=submit]');
+await page.waitForURL(/\/[A-Za-z0-9]{8}\+$/, { timeout: 15000 });
+await page.waitForSelector("text=goes to");
+check("short link preview page", (await page.locator("body").innerText()).includes("example.com"));
+await page.screenshot({ path: `${OUT}/12-short-link.png` });
+const shortId = page.url().match(/\/([A-Za-z0-9]{8})\+$/)[1];
+const redir = await page.request.get(`${BASE}/${shortId}`, { maxRedirects: 0 });
+check("bare short link redirects", redir.status() === 307 && redir.headers()["location"] === "https://example.com/some/long/path?utm=1");
+
 // ---- Docs + 404 + mobile
 await page.goto(BASE + "/docs");
 check("docs page", (await page.locator("h1").count()) > 0);

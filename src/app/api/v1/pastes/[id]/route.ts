@@ -5,6 +5,7 @@ import { splitIdAndLang } from "@/lib/langs";
 import { enforceRateLimit } from "@/lib/ratelimit";
 import { deletePaste, readPaste, updatePaste } from "@/lib/service";
 import { originFrom, pasteUrl } from "@/lib/url";
+import { extractLink, pasteKind } from "@/lib/links";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,14 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     await enforceRateLimit("read", clientIp(req));
     const paste = await readPaste(id);
     const origin = originFrom(req);
-    return json({ ...paste, url: pasteUrl(origin, paste.id), rawUrl: `${origin}/${paste.id}/raw` });
+    const kind = pasteKind(paste);
+    return json({
+      ...paste,
+      kind,
+      ...(kind === "link" ? { link: extractLink(paste.content) } : {}),
+      url: pasteUrl(origin, paste.id),
+      rawUrl: `${origin}/${paste.id}/raw`,
+    });
   } catch (err) {
     return errorResponse(err);
   }

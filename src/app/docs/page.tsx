@@ -90,6 +90,7 @@ Content-Type: application/json
   "lang": "go",                // optional; id or alias (unknown → "text"; auto-detection is a web-editor feature)
   "expires": "${DEFAULT_EXPIRY}",             // ${EXPIRIES.map((e) => e.id).join(" | ")}
   "burn": false,               // destroy after the first read (true/false, 1/0, yes/no)
+  // responses also carry "kind": "text" | "image" | "link" (and "link": the target for short links)
   "enc": { ... }               // present only for client-encrypted pastes, see below
 }
 
@@ -104,6 +105,15 @@ Content-Type: application/json
           Bodies may also be <span className="font-mono">multipart/form-data</span>, <span className="font-mono">application/x-www-form-urlencoded</span> or raw text. For raw text, pass options as query parameters (<span className="font-mono">name</span>, <span className="font-mono">lang</span>, <span className="font-mono">expires</span>, <span className="font-mono">burn</span>, <span className="font-mono">title</span>).
           In JSON, an image is its base64 in <span className="font-mono">content</span> with <span className="font-mono">lang</span> set to <span className="font-mono">png</span>, <span className="font-mono">jpeg</span>, <span className="font-mono">gif</span> or <span className="font-mono">webp</span>; raw and multipart bodies with an image content type or file name are converted for you.
         </p>
+
+        <H2 id="links">Short links</H2>
+        <p className="text-[13px] text-fg-muted">
+          A paste that is exactly one <span className="font-mono">http(s)</span> URL becomes a short link: opening it redirects straight to the target, and the editor tells you so when it sees one. Encrypted and burn-after-read pastes never redirect.
+        </p>
+        <Code>{`curl --data-binary 'https://example.com/some/very/long/path?with=params' -H 'Content-Type: text/plain' ${HOST}/api/v1/pastes
+${HOST}/AbCd1234              → 307 redirect to the target (counts a visit)
+${HOST}/AbCd1234+             → preview page: where it goes, visits, QR
+GET /api/v1/pastes/AbCd1234   → { "kind": "link", "link": "https://example.com/…", … }`}</Code>
 
         <H2 id="read">Read</H2>
         <Code>{`GET  /api/v1/pastes/:id         → JSON (counts a view)

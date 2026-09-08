@@ -83,6 +83,19 @@ check "$(curl -s -o /dev/null -w '%{http_code}' $BASE/api/v1/admin/pastes)" "404
 check "$(curl -s "$BASE/?text=shared+text&title=From+share" | grep -c 'shared text')" "1" "share-target prefill renders"
 check "$(curl -s $BASE/api/v1/info | py 'str(len(d["expiries"]))+"|"+d["defaultExpiry"]')" "6|7d" "info lists expiries"
 
+# ---- short links ----
+L=$(curl -s -H "$A" -H "$J" -d '{"content":"https://example.com/some/path?x=1"}' $BASE/api/v1/pastes)
+LID=$(echo "$L" | py 'd["id"]'); check "$(echo "$L" | py 'd["kind"]+"|"+d["link"]')" "link|https://example.com/some/path?x=1" "create returns kind=link"
+check "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' $BASE/$LID)" "307 https://example.com/some/path?x=1" "short link redirects"
+check "$(curl -s "$BASE/$LID+" | grep -c 'short link')" "1" "+ shows the preview page"
+check "$(curl -s "$BASE/$LID?preview" | grep -c 'short link')" "1" "?preview shows the preview page"
+check "$(curl -s $BASE/$LID/raw)" "https://example.com/some/path?x=1" "raw of a link paste is the url"
+check "$(curl -s -H "$A" $BASE/api/v1/pastes/$LID | py 'd["kind"]')" "link" "api read kind=link"
+check "$(curl -s -H "$A" -H "$J" -d '{"content":"https://example.com/two\nlines"}' $BASE/api/v1/pastes | py 'd["kind"]')" "text" "two lines are text"
+BL=$(curl -s -H "$A" -H "$J" -d '{"content":"https://example.com/","burn":true}' $BASE/api/v1/pastes | py 'd["id"]'); check "$(curl -s -o /dev/null -w '%{http_code}' $BASE/$BL)" "200" "burn link pastes do not redirect"
+PNG='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+IMG=$(curl -s -H "$A" -H "$J" -d "{\"content\":\"$PNG\",\"lang\":\"png\"}" $BASE/api/v1/pastes | py 'd["id"]+"|"+d["kind"]'); check "$(echo "$IMG" | cut -d'|' -f2)" "image" "image paste kind"
+
 # ---- CLI (Node) against the same server ----
 export PASTR_CONFIG_DIR=$(mktemp -d)
 CLI="node $(dirname "$0")/../cli/pastr.mjs"

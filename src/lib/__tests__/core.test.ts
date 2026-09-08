@@ -6,6 +6,7 @@ import { getLang, imageMime, langFromFilename, langFromMime, normalizeLang, spli
 import { detectLang } from "../detect";
 import { BASE64, base64Bytes, byteLength, formatBytes } from "../bytes";
 import { createPasteSchema, updatePasteSchema } from "../validation";
+import { extractLink, linkLabel, pasteKind } from "../links";
 
 describe("ids", () => {
   it("generates 8-char ids from the safe alphabet", () => {
@@ -145,5 +146,27 @@ describe("validation", () => {
   it("update requires a field", () => {
     expect(updatePasteSchema.safeParse({}).success).toBe(false);
     expect(updatePasteSchema.safeParse({ title: "x" }).success).toBe(true);
+  });
+});
+
+describe("links", () => {
+  it("accepts exactly one http(s) url", () => {
+    expect(extractLink("https://example.com/a?b=1")).toBe("https://example.com/a?b=1");
+    expect(extractLink("  http://example.com \n")).toBe("http://example.com/");
+    expect(extractLink("https://example.com/x\nsecond line")).toBeNull();
+    expect(extractLink("see https://example.com")).toBeNull();
+    expect(extractLink("ftp://example.com/f")).toBeNull();
+    expect(extractLink("https://localhost/x")).toBeNull();
+    expect(extractLink("https://user:pw@example.com/")).toBeNull();
+    expect(extractLink("https://example.com/" + "a".repeat(3000))).toBeNull();
+    expect(extractLink("not a url")).toBeNull();
+  });
+  it("labels and classifies", () => {
+    expect(linkLabel("https://example.com/")).toBe("example.com");
+    expect(linkLabel("https://example.com/path?q=1")).toBe("example.com/path?q=1");
+    expect(pasteKind({ content: "https://example.com", lang: "text" })).toBe("link");
+    expect(pasteKind({ content: "hello", lang: "text" })).toBe("text");
+    expect(pasteKind({ content: "https://example.com", lang: "text", enc: { alg: "AES-GCM", kdf: "fragment", iv: "AAAAAAAAAAAAAAAA" } })).toBe("text");
+    expect(pasteKind({ content: "iVBORw0KGgo=", lang: "png" })).toBe("image");
   });
 });

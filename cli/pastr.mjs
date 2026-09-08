@@ -659,6 +659,7 @@ export async function main(argv) {
       if (ERR_TTY) process.stderr.write("\r\x1b[2K");
     }
     const url = o.raw ? p.rawUrl : p.url;
+    if (p.kind === "link" && p.link) process.stderr.write(`short link → ${p.link}\n`);
     if (o.json) out(JSON.stringify(p, null, 2) + "\n");
     else out(link(url) + "\n");
     const copied = o.copy ? (writeClipboard(url) ? "copied to clipboard" : "could not copy to clipboard") : "";

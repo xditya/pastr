@@ -10,6 +10,8 @@ pastr is a small pastebin that runs on Vercel and Upstash Redis. It highlights 7
 
 ## What you get
 
+- **Short links**: paste a single URL and `/{id}` redirects to it; `/{id}+` shows where it goes first.
+
 - Syntax highlighting rendered on the server with shiki, in light and dark, with linkable line ranges, a wrap toggle and rendered Markdown. Pages work without JavaScript.
 - Expiry from 10 minutes to never, enforced by a Redis TTL instead of a cleanup job. Burn-after-read pastes are destroyed the moment someone opens them.
 - Optional end-to-end encryption (AES-256-GCM). The key lives after the `#` in the link or is derived from a password; the server only ever sees ciphertext, including the title and language.

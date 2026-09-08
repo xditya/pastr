@@ -4,6 +4,7 @@ import { errorResponse, json, options, prefersText, readBody, text, clientIp } f
 import { enforceRateLimit } from "@/lib/ratelimit";
 import { createPaste } from "@/lib/service";
 import { originFrom, pasteUrl } from "@/lib/url";
+import { extractLink, pasteKind } from "@/lib/links";
 
 export const runtime = "nodejs";
 
@@ -37,7 +38,8 @@ export async function POST(req: NextRequest) {
     const headers = { Location: url, "X-Edit-Token": editToken };
     if (wantsText) return text(`${url}\n`, { status: 201, headers });
     if (isBrowserForm(req)) return Response.redirect(url, 303);
-    return json({ ...paste, url, rawUrl, editToken }, { status: 201, headers });
+    const kind = pasteKind(paste);
+    return json({ ...paste, kind, ...(kind === "link" && !paste.burn ? { link: extractLink(paste.content) } : {}), url, rawUrl, editToken }, { status: 201, headers });
   } catch (err) {
     return errorResponse(err, wantsText);
   }
