@@ -76,13 +76,13 @@ export function Dialog({ open, onClose, title, children, className }: { open: bo
       }}
       className={cn(
         "m-auto w-[min(92vw,28rem)] rounded-xl border border-border bg-surface p-0 text-fg shadow-pop backdrop:bg-black/40 backdrop:backdrop-blur-[2px]",
-        "max-sm:mx-0 max-sm:mb-0 max-sm:mt-auto max-sm:max-h-[88dvh] max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:border-x-0 max-sm:border-b-0 max-sm:px-inset",
+        "max-sm:mx-0 max-sm:mb-0 max-sm:mt-auto max-sm:max-h-[88dvh] max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:rounded-t-xl max-sm:border-x-0 max-sm:border-b-0 max-sm:px-inset",
       )}
     >
       <div className="touch-none" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
         <div aria-hidden className="mx-auto mt-2.5 h-1 w-9 rounded-full bg-border-strong sm:hidden" />
-        <div className="flex items-center justify-between border-b border-border px-4 py-3 max-sm:border-b-0 max-sm:pb-1 max-sm:pt-2">
-          <h2 id={titleId} className="text-[14px] font-semibold max-sm:text-[16px]">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3 max-sm:pt-2">
+          <h2 id={titleId} className="text-[14px] font-semibold">
             {title}
           </h2>
           <IconButton label="Close" size="sm" onClick={onClose}>
@@ -114,12 +114,12 @@ export function SheetAction({
   disabled?: boolean;
 }) {
   const cls = cn(
-    "flex min-h-12 w-full items-center gap-3 py-2 text-left text-[15px] font-medium transition-colors active:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40",
+    "flex min-h-12 w-full items-center gap-3 py-2 text-left text-[14px] font-medium transition-colors active:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40",
     danger ? "text-danger" : "text-fg",
   );
   const body = (
     <>
-      <span className="flex size-6 shrink-0 items-center justify-center text-fg-muted">{icon}</span>
+      <span className="flex size-5 shrink-0 items-center justify-center text-fg-muted [&>svg]:size-4">{icon}</span>
       <span className="flex min-w-0 flex-col">
         <span>{children}</span>
         {hint && <span className="text-[12.5px] font-normal text-fg-muted">{hint}</span>}

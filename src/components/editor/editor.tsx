@@ -618,7 +618,7 @@ function OptionFields(p: FieldProps) {
       <>
         {p.image ? (
           <div className="flex items-center justify-between gap-3 py-3">
-            <span className="flex items-center gap-2 text-[15px] font-medium">
+            <span className="flex items-center gap-2 text-[14px] font-medium">
               <ImageIcon className="size-4 text-fg-faint" aria-hidden /> {imageLabel} image
             </span>
             <Button type="button" size="sm" onClick={p.removeImage} aria-label="Remove image">
@@ -627,7 +627,7 @@ function OptionFields(p: FieldProps) {
           </div>
         ) : (
           <label className="flex items-center justify-between gap-3 py-3">
-            <span className="text-[15px] font-medium">Language</span>
+            <span className="text-[14px] font-medium">Language</span>
             <Select look="row" value={p.lang} onChange={(e) => p.setLang(e.target.value)} aria-label="Language" className="w-[58%]">
               <LangOptions lang={p.lang} content={p.content} detected={p.detected} />
             </Select>
@@ -635,7 +635,7 @@ function OptionFields(p: FieldProps) {
         )}
         {!p.edit && (
           <label className="flex items-center justify-between gap-3 py-3">
-            <span className="text-[15px] font-medium">Expires</span>
+            <span className="text-[14px] font-medium">Expires</span>
             <Select look="row" value={p.expiry} onChange={(e) => p.setExpiry(e.target.value)} aria-label="Expiry" className="w-[58%]">
               {p.allowedExpiries.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -647,7 +647,7 @@ function OptionFields(p: FieldProps) {
         )}
         {!p.edit && (
           <Switch appearance="row" checked={p.burn} onChange={p.setBurn} label="Burn after read" hint="destroyed after the first view">
-            Burn after read
+            <Flame className={cn("size-3.5", p.burn ? "text-warning" : "text-fg-faint")} aria-hidden /> Burn
           </Switch>
         )}
         <Switch
@@ -658,11 +658,11 @@ function OptionFields(p: FieldProps) {
           disabled={p.edit}
           hint={p.encrypt && p.usePassword ? "the password never leaves your browser" : "the key lives in the link after #"}
         >
-          Encrypt in browser
+          <Lock className={cn("size-3.5", !p.encrypt && "text-fg-faint")} aria-hidden /> Encrypt
         </Switch>
         {p.encrypt && !p.edit && (
           <Switch appearance="row" checked={p.usePassword} onChange={p.setUsePassword} label="Use a password" hint="instead of a key in the link">
-            Use a password
+            <KeyRound className={cn("size-3.5", !p.usePassword && "text-fg-faint")} aria-hidden /> Password
           </Switch>
         )}
         {p.encrypt && !p.edit && p.usePassword && (

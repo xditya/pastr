@@ -565,9 +565,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
             )}
             {revealed && !image && (!isMarkdown || !preview) && (
               <Switch appearance="row" checked={wrap} onChange={toggleWrap} label="Wrap long lines">
-                <span className="flex items-center gap-3">
-                  <WrapText className="size-5 text-fg-muted" aria-hidden /> Wrap long lines
-                </span>
+                <WrapText className="size-3.5" aria-hidden /> Wrap
               </Switch>
             )}
             {!paste.enc && !paste.burn && (
