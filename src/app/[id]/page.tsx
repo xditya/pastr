@@ -143,5 +143,9 @@ export default async function PastePage(props: Props) {
   );
 
   if (embed) return <div className="p-2">{content}</div>;
-  return <Shell wide>{content}</Shell>;
+  return (
+    <Shell wide mobile="viewer">
+      {content}
+    </Shell>
+  );
 }

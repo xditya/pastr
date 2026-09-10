@@ -55,7 +55,7 @@ export function CodeBlock({ lines, wrap, className, linkable = true }: { lines: 
   const width = String(lines.length).length;
 
   return (
-    <div className={cn("code overflow-x-auto rounded-lg border border-border bg-code-bg", className)}>
+    <div className={cn("code overflow-x-auto rounded-lg border border-border bg-code-bg max-sm:rounded-none max-sm:border-x-0", className)}>
       <table className="w-full border-collapse">
         <tbody>
           {lines.map((html, i) => {

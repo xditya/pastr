@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
-type Size = "sm" | "md";
+type Size = "sm" | "md" | "lg";
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: Variant;
@@ -20,9 +20,11 @@ const variants: Record<Variant, string> = {
   danger: "border-border bg-surface text-danger hover:border-danger/40 hover:bg-danger/10",
 };
 
+// Phones get taller controls so every button is a comfortable tap target.
 const sizes: Record<Size, string> = {
-  sm: "h-7 px-2.5 text-[12.5px]",
-  md: "h-8 px-3 text-[13px]",
+  sm: "h-7 px-2.5 text-[12.5px] max-sm:h-9 max-sm:px-3 max-sm:text-[13.5px]",
+  md: "h-8 px-3 text-[13px] max-sm:h-10 max-sm:px-3.5 max-sm:text-[14px]",
+  lg: "h-11 px-4 text-[15px]",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -51,7 +53,7 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonProps & { label: s
       ref={ref}
       aria-label={label}
       title={label}
-      className={cn(base, variants[variant], size === "sm" ? "size-7" : "size-8", "px-0", className)}
+      className={cn(base, variants[variant], size === "sm" ? "size-7 max-sm:size-9" : "size-8 max-sm:size-10", "px-0", className)}
       {...props}
     >
       {children}

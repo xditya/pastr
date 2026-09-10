@@ -183,8 +183,10 @@ check("404 page", (await page.locator("text=Nothing here").count()) > 0);
 // iOS Safari zooms the page when a focused control is under 16px, so on touch screens every control must be 16px+.
 await page.goto(BASE + "/");
 check("desktop keeps the 13.5px editor", await page.evaluate(() => !matchMedia("(pointer: coarse)").matches && getComputedStyle(document.querySelector(".editor-textarea")).fontSize === "13.5px"));
-const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 const mp = await mobile.newPage();
+mp.on("pageerror", (e) => errors.push(String(e)));
+mp.on("console", (m) => m.type() === "error" && !/404/.test(m.text()) && errors.push(m.text()));
 const controlSizes = (pg) =>
   pg.evaluate(() =>
     [...document.querySelectorAll("input:not([type=hidden]):not([type=file]), select, textarea")]
@@ -192,10 +194,18 @@ const controlSizes = (pg) =>
       .map((el) => `${el.getAttribute("aria-label") || el.name || el.tagName}=${getComputedStyle(el).fontSize}`),
   );
 const allBig = (sizes) => sizes.length > 0 && sizes.every((s) => parseFloat(s.split("=")[1]) >= 16);
+const settle = (pg) => pg.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))));
+const bottomSheet = (pg) =>
+  pg.evaluate(async () => {
+    const d = document.querySelector("dialog[open]");
+    await Promise.all(d.getAnimations().map((a) => a.finished));
+    const r = d.getBoundingClientRect();
+    return Math.abs(r.bottom - window.innerHeight) <= 1 && r.left === 0 && Math.abs(r.width - window.innerWidth) <= 1;
+  });
 await mp.goto(BASE + "/");
 check("mobile context is a coarse pointer", await mp.evaluate(() => matchMedia("(pointer: coarse)").matches));
 let sizes = await controlSizes(mp);
-check("home controls are 16px+ on touch", sizes.length >= 3 && allBig(sizes), sizes.join(", "));
+check("home controls are 16px+ on touch", sizes.length >= 2 && allBig(sizes), sizes.join(", "));
 check(
   "editor gutter matches textarea metrics on touch",
   await mp.evaluate(() => {
@@ -204,16 +214,131 @@ check(
     return g.fontSize === t.fontSize && g.lineHeight === t.lineHeight && g.fontFamily === t.fontFamily && parseFloat(t.fontSize) >= 16;
   }),
 );
+// App shell: the editor fills the screen edge to edge above a bottom bar; the desktop chip row is gone.
+check("mobile home has a bottom bar", await mp.locator('nav[aria-label="Editor actions"]').isVisible());
+check("desktop option chips hidden on mobile", !(await mp.locator("select[name=lang]").isVisible()));
+check(
+  "editor fills the screen above the bar",
+  await mp.evaluate(() => {
+    const card = document.querySelector("form").firstElementChild.getBoundingClientRect();
+    const bar = document.querySelector('nav[aria-label="Editor actions"]').getBoundingClientRect();
+    return Math.abs(card.bottom - bar.top) <= 1 && card.left === 0 && Math.abs(card.right - window.innerWidth) <= 1 && Math.abs(bar.bottom - window.innerHeight) <= 1;
+  }),
+);
+await settle(mp);
+await mp.screenshot({ path: `${OUT}/09-mobile-home.png` });
+// Options sheet: anchored to the bottom and driving the same state as the desktop chips.
+await mp.click('nav[aria-label="Editor actions"] button:has-text("Options")');
+await mp.waitForSelector("dialog[open]");
+check("options open as a bottom sheet", await bottomSheet(mp));
+sizes = await controlSizes(mp);
+check("sheet controls are 16px+ on touch", allBig(sizes), sizes.join(", "));
+await mp.selectOption('dialog[open] select[aria-label="Expiry"]', "1h");
+await mp.click('dialog[open] button[role=switch]:has-text("Burn after read")');
+await settle(mp);
+await mp.screenshot({ path: `${OUT}/11-mobile-options.png` });
+await mp.click('dialog[open] button:has-text("Done")');
+await mp.waitForSelector("dialog[open]", { state: "detached" });
+check(
+  "sheet closes and the editor reflects the options",
+  (await mp.locator("form").innerText()).includes("burn") && (await mp.locator("select[name=expires]").inputValue()) === "1h",
+);
+check("closing the sheet returns focus to the Options button", await mp.evaluate(() => document.activeElement?.textContent?.trim() === "Options"));
+// Dragging the sheet header down dismisses it, like a native sheet.
+await mp.click('nav[aria-label="Editor actions"] button:has-text("Options")');
+await mp.waitForSelector("dialog[open]");
+await settle(mp);
+await mp.evaluate(() => {
+  const head = document.querySelector("dialog[open] h2").parentElement.parentElement;
+  const touch = (type, y) =>
+    head.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === "touchend" ? [] : [new Touch({ identifier: 1, target: head, clientX: 200, clientY: y })] }));
+  touch("touchstart", 700);
+  touch("touchmove", 760);
+  touch("touchmove", 840);
+  touch("touchend", 840);
+});
+await mp.waitForSelector("dialog[open]", { state: "detached", timeout: 3000 });
+check("swiping the sheet down dismisses it", true);
 await mp.click('button[aria-label="Your pastes"]');
 sizes = await controlSizes(mp);
 check("open-by-id input is 16px+ on touch", sizes.some((s) => s.startsWith("Open a paste")) && allBig(sizes), sizes.join(", "));
+check(
+  "pastes menu spans the width on mobile",
+  await mp.evaluate(() => {
+    const r = document.getElementById("your-pastes").getBoundingClientRect();
+    return r.left === 0 && Math.abs(r.width - window.innerWidth) <= 1;
+  }),
+);
+await settle(mp);
+await mp.screenshot({ path: `${OUT}/16-mobile-pastes.png` });
 await mp.click('button[aria-label="Your pastes"]');
-await mp.screenshot({ path: `${OUT}/09-mobile-home.png` });
+// Paste page: bottom bar, hidden desktop toolbar, full-bleed code, More sheet, Share sheet.
 await mp.goto(pasteUrl);
 await mp.waitForSelector("h1");
-await mp.screenshot({ path: `${OUT}/10-mobile-paste.png` });
+check("paste toolbar hidden on mobile", !(await mp.locator("[role=toolbar]").isVisible()));
+check("paste page has a bottom bar", await mp.locator('nav[aria-label="Paste actions"]').isVisible());
+check(
+  "code block is full-bleed on mobile",
+  await mp.evaluate(() => {
+    const r = document.querySelector(".code").getBoundingClientRect();
+    return r.left === 0 && Math.abs(r.right - window.innerWidth) <= 1;
+  }),
+);
 check("no horizontal overflow on mobile", await mp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+await settle(mp);
+await mp.screenshot({ path: `${OUT}/10-mobile-paste.png` });
+await mp.click('nav[aria-label="Paste actions"] button:has-text("More")');
+await mp.waitForSelector("dialog[open]");
+const moreText = await mp.locator("dialog[open]").innerText();
+check("more sheet lists the secondary actions", await bottomSheet(mp) && ["Wrap long lines", "Download", "Fork", "Edit", "Delete", "Report"].every((t) => moreText.includes(t)), moreText.replace(/\s+/g, " ").slice(0, 120));
+await settle(mp);
+await mp.screenshot({ path: `${OUT}/13-mobile-more.png` });
+await mp.keyboard.press("Escape");
+await mp.waitForSelector("dialog[open]", { state: "detached" });
+await mp.click('nav[aria-label="Paste actions"] button:has-text("Share")');
+await mp.waitForSelector("dialog[open]");
+check("share opens as a bottom sheet", await bottomSheet(mp));
+await settle(mp);
+await mp.screenshot({ path: `${OUT}/14-mobile-share.png` });
+await mp.keyboard.press("Escape");
+await mp.waitForSelector("dialog[open]", { state: "detached" });
+// Edit mode on a phone: hand over the edit token saved by the desktop flow, then check the editor fills the screen without a dead scroll.
+const savedPastes = await page.evaluate(() => localStorage.getItem("pastr:pastes"));
+await mp.evaluate((v) => localStorage.setItem("pastr:pastes", v), savedPastes);
+await mp.reload();
+await mp.waitForSelector("h1");
+await mp.click('nav[aria-label="Paste actions"] button:has-text("More")');
+await mp.click('dialog[open] button:has-text("Edit")');
+await mp.waitForSelector("textarea[name=content]");
+await settle(mp);
+check(
+  "phone edit mode fills the screen above the bar without scrolling",
+  await mp.evaluate(() => {
+    const card = document.querySelector("form").firstElementChild.getBoundingClientRect();
+    const bar = document.querySelector('nav[aria-label="Editor actions"]').getBoundingClientRect();
+    return document.documentElement.scrollHeight <= window.innerHeight + 1 && Math.abs(card.bottom - bar.top) <= 1 && card.top <= 50;
+  }),
+);
+await mp.screenshot({ path: `${OUT}/17-mobile-edit.png` });
+await mp.click('button:has-text("Cancel")');
+await mp.waitForSelector("h1");
+// Dark theme on the phone layout.
+await mp.emulateMedia({ colorScheme: "dark" });
+await mp.evaluate(() => {
+  localStorage.setItem("theme", "dark");
+  document.documentElement.classList.add("dark");
+});
+await mp.goto(BASE + "/");
+await mp.waitForSelector("textarea[name=content]");
+await settle(mp);
+await mp.screenshot({ path: `${OUT}/15-mobile-home-dark.png` });
 await mobile.close();
+// Without JavaScript a phone still gets the desktop option chips (the form submits without the bar or sheets).
+const nojs = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, javaScriptEnabled: false });
+const np = await nojs.newPage();
+await np.goto(BASE + "/");
+check("no-js phone keeps the option chips", (await np.locator("select[name=lang]").isVisible()) && !(await np.locator('nav[aria-label="Editor actions"]').isVisible()));
+await nojs.close();
 
 check("no console/page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 await browser.close();

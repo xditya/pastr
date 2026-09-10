@@ -16,7 +16,7 @@ export default async function HomePage(props: PageProps<"/">) {
   const text = [pick(q.text), pick(q.url)].filter(Boolean).join("\n");
   const shared = text ? { content: text.slice(0, LIMITS.maxBytes), title: pick(q.title).slice(0, 120) || undefined } : undefined;
   return (
-    <Shell wide>
+    <Shell wide mobile="editor">
       <NewPaste maxBytes={LIMITS.maxBytes} expiries={allowedExpiries()} shared={shared} />
     </Shell>
   );

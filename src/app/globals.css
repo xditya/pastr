@@ -82,6 +82,29 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ---------- Mobile app shell ------------------------------------------------
+   Under the sm breakpoint the editor and the paste page use a fixed bottom bar and
+   bottom sheets instead of the desktop toolbars. Shared sizes keep the paddings honest.
+   The editor is not sized explicitly: <main> pads itself above the bar (pb-bar) and the
+   editor card is flex-1 inside the min-h-dvh shell, so it always ends exactly at the bar. */
+:root {
+  --bar-h: calc(3.5rem + 1px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+/* Room for the fixed bottom bar under the content. */
+@utility pb-bar {
+  padding-bottom: calc(var(--bar-h) + var(--safe-b));
+}
+/* Bottom padding that clears the home indicator on phones. */
+@utility pb-safe {
+  padding-bottom: max(1rem, var(--safe-b));
+}
+/* Side padding for fixed and top-layer surfaces, which body padding does not reach. */
+@utility px-inset {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
 /* ---------- Base ------------------------------------------------------------
    Inside @layer base so Tailwind utilities (a later layer) can override these.
 ---------------------------------------------------------------------------- */
@@ -99,6 +122,9 @@
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* viewport-fit=cover: keep every in-flow surface clear of the notch in landscape. */
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }
 
   ::selection {
@@ -303,6 +329,24 @@
 }
 .animate-fade-up {
   animation: fade-up 240ms var(--ease) both;
+}
+
+/* Dialogs are bottom sheets on phones and slide up. */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (max-width: 639.98px) {
+  /* "backwards", not "both": once the sheet has arrived, an inline transform must be able to drag it. */
+  dialog[open] {
+    animation: slide-up 260ms var(--ease) backwards;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

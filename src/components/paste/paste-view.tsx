@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, Download, FileCode2, Flag, Flame, GitFork, Link2, Lock, Pencil, Share2, Trash2, WrapText } from "lucide-react";
+import { Check, Copy, Download, Ellipsis, FileCode2, Flag, Flame, GitFork, Link2, Lock, Pencil, Share2, Trash2, WrapText } from "lucide-react";
 import type { EncryptionMeta, PublicPaste } from "@/lib/paste";
 import { api, ApiError } from "@/lib/client";
 import { decryptEnvelope } from "@/lib/crypto";
@@ -18,7 +18,9 @@ import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useLocalPaste, useMounted, usePrefs } from "@/hooks/use-local";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
+import { Dialog, SheetAction, SheetLinks } from "@/components/ui/dialog";
+import { BarButton, BarLink, MobileBar } from "@/components/ui/mobile-bar";
+import { Switch } from "@/components/ui/switch";
 import { CodeBlock } from "./code-block";
 import { MarkdownView } from "./markdown-view";
 import { ShareDialog } from "./share-dialog";
@@ -72,6 +74,8 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
   const [tokenPrompt, setTokenPrompt] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
   const [tokenIntent, setTokenIntent] = useState<"edit" | "delete">("edit");
+  /** Phone-only "More" sheet with the secondary actions. */
+  const [more, setMore] = useState(false);
 
   const mounted = useMounted();
   const local = useLocalPaste(paste.id);
@@ -299,8 +303,9 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
       try {
         await nav.share(data);
         return;
-      } catch {
-        /* cancelled — fall through to the dialog */
+      } catch (e) {
+        if ((e as DOMException)?.name === "AbortError") return; // the person dismissed the system sheet
+        /* not shareable here — fall through to the dialog */
       }
     }
     setShare(true);
@@ -343,7 +348,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
     <div className="flex flex-1 flex-col">
       {/* Header */}
       {!embed && (
-        <div className="flex flex-col gap-3 pb-3 md:flex-row md:items-center">
+        <div className="flex flex-col gap-3 pb-3 max-sm:px-4 max-sm:pt-3 md:flex-row md:items-center">
           <div className="min-w-0 flex-1">
             <h1 className="flex items-center gap-2 text-[17px] font-semibold tracking-tight">
               {paste.enc && <Lock className="size-4 shrink-0 text-fg-muted" aria-label="Encrypted" />}
@@ -373,8 +378,8 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
               {burned && <span className="text-warning">· destroyed, this was the only view</span>}
             </div>
           </div>
-          {/* One toolbar: icons everywhere, labels from md up. Titles carry the hotkeys. */}
-          <div role="toolbar" aria-label="Paste actions" className="flex w-fit divide-x divide-border overflow-hidden rounded-md border border-border bg-surface">
+          {/* One toolbar: icons everywhere, labels from md up. Titles carry the hotkeys. Phones use the bottom bar instead. */}
+          <div role="toolbar" aria-label="Paste actions" className="flex w-fit divide-x divide-border overflow-hidden rounded-md border border-border bg-surface max-sm:[.js_&]:hidden">
             {isMarkdown && revealed && (
               <button type="button" onClick={() => setPreview(!preview)} aria-pressed={!preview} title={preview ? "Show source" : "Show preview"} className={tool}>
                 <FileCode2 className="size-3.5" aria-hidden /> <span className={toolLabel}>{preview ? "Source" : "Preview"}</span>
@@ -465,7 +470,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
                 placeholder={needsSecret === "password" ? "Password" : "Key"}
                 aria-label={needsSecret === "password" ? "Password" : "Decryption key"}
                 autoFocus
-                className="h-8 min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 text-[13px]"
+                className="h-8 min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 text-[13px] max-sm:h-10 max-sm:px-3"
               />
               <Button type="submit" variant="primary" loading={busy} disabled={!secretInput}>
                 Decrypt
@@ -475,9 +480,9 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
           error={error}
         />
       ) : !revealed ? (
-        <div className="flex flex-1 items-center justify-center py-20 text-[13px] text-fg-muted">{busy ? "Decrypting…" : "Loading…"}</div>
+        <div className="flex flex-1 items-center justify-center py-20 text-[13px] text-fg-muted max-sm:px-4">{busy ? "Decrypting…" : "Loading…"}</div>
       ) : image ? (
-        <div className="flex flex-1 items-start justify-center rounded-lg border border-border bg-code-bg p-4">
+        <div className="flex flex-1 items-start justify-center rounded-lg border border-border bg-code-bg p-4 max-sm:rounded-none max-sm:border-x-0">
           {/* eslint-disable-next-line @next/next/no-img-element -- data URL, unknown dimensions */}
           <img src={`data:${image};base64,${revealed.content}`} alt={title ?? paste.id} className="max-h-[80vh] max-w-full rounded" />
         </div>
@@ -491,14 +496,14 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
 
       {/* Footer row */}
       {!embed && (
-        <div className="flex items-center gap-x-3 py-2 font-mono text-[11.5px] text-fg-faint">
+        <div className="flex items-center gap-x-3 py-2 font-mono text-[11.5px] text-fg-faint max-sm:px-4">
           <span>{paste.id}</span>
           {revealed && !image && <span>{revealed.content.split("\n").length.toLocaleString("en-US")} lines</span>}
           {revealed && !image && (!isMarkdown || !preview) && (
             <span className="hidden md:inline">{paste.enc ? "click a line number to select it, shift-click for a range" : "click a line number to link it, shift-click for a range"}</span>
           )}
           {!burned && (
-            <button type="button" onClick={() => setReport(true)} className="ml-auto flex items-center gap-1 hover:text-danger">
+            <button type="button" onClick={() => setReport(true)} className="ml-auto flex items-center gap-1 hover:text-danger max-sm:[.js_&]:hidden">
               <Flag className="size-3" aria-hidden /> Report
             </button>
           )}
@@ -513,12 +518,121 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
         </div>
       )}
 
+      {/* Phones: bottom bar with the primary actions; everything else in the More sheet */}
+      {!embed && (
+        <MobileBar label="Paste actions">
+          {!image && (
+            <BarButton icon={copied ? <Check className="size-5 text-success" aria-hidden /> : <Copy className="size-5" aria-hidden />} onClick={copy} disabled={!revealed}>
+              Copy
+            </BarButton>
+          )}
+          {!burned && (
+            <BarButton icon={<Share2 className="size-5" aria-hidden />} onClick={() => void shareNative()}>
+              Share
+            </BarButton>
+          )}
+          {!paste.enc && !paste.burn && (
+            <BarLink icon={<Link2 className="size-5" aria-hidden />} href={`/${paste.id}/raw`} target="_blank" rel="noopener">
+              Raw
+            </BarLink>
+          )}
+          {revealed && (paste.enc || paste.burn) && (
+            <BarButton
+              icon={<Download className="size-5" aria-hidden />}
+              onClick={() => downloadContent(revealed.content, `${title || paste.id}.${getLang(revealed.lang)?.ext[0] ?? "txt"}`, image)}
+            >
+              Download
+            </BarButton>
+          )}
+          <BarButton icon={<Ellipsis className="size-5" aria-hidden />} onClick={() => setMore(true)} aria-haspopup="dialog" aria-expanded={more}>
+            More
+          </BarButton>
+        </MobileBar>
+      )}
+      {more && (
+        <Dialog open onClose={() => setMore(false)} title={title || paste.id}>
+          <div className="flex flex-col divide-y divide-border">
+            {isMarkdown && revealed && (
+              <SheetAction
+                icon={<FileCode2 className="size-5" aria-hidden />}
+                onClick={() => {
+                  setMore(false);
+                  setPreview(!preview);
+                }}
+              >
+                {preview ? "Show source" : "Show preview"}
+              </SheetAction>
+            )}
+            {revealed && !image && (!isMarkdown || !preview) && (
+              <Switch appearance="row" checked={wrap} onChange={toggleWrap} label="Wrap long lines">
+                <span className="flex items-center gap-3">
+                  <WrapText className="size-5 text-fg-muted" aria-hidden /> Wrap long lines
+                </span>
+              </Switch>
+            )}
+            {!paste.enc && !paste.burn && (
+              <SheetAction icon={<Download className="size-5" aria-hidden />} href={`/${paste.id}/raw?dl=1`} onClick={() => setMore(false)}>
+                Download
+              </SheetAction>
+            )}
+            <SheetAction
+              icon={<GitFork className="size-5" aria-hidden />}
+              disabled={!revealed}
+              onClick={() => {
+                setMore(false);
+                fork();
+              }}
+            >
+              Fork into a new paste
+            </SheetAction>
+            {!paste.burn && (
+              <SheetAction
+                icon={<Pencil className="size-5" aria-hidden />}
+                disabled={!revealed}
+                hint={hasToken ? undefined : "needs the edit token"}
+                onClick={() => {
+                  setMore(false);
+                  startEdit();
+                }}
+              >
+                Edit
+              </SheetAction>
+            )}
+            {!burned && (
+              <SheetAction
+                icon={<Trash2 className="size-5" aria-hidden />}
+                danger
+                hint={hasToken ? undefined : "needs the edit token"}
+                onClick={() => {
+                  setMore(false);
+                  askDelete();
+                }}
+              >
+                Delete
+              </SheetAction>
+            )}
+            {!burned && (
+              <SheetAction
+                icon={<Flag className="size-5" aria-hidden />}
+                onClick={() => {
+                  setMore(false);
+                  setReport(true);
+                }}
+              >
+                Report this paste
+              </SheetAction>
+            )}
+          </div>
+          <SheetLinks />
+        </Dialog>
+      )}
+
       {/* Dialogs */}
       <ShareDialog open={share} onClose={() => setShare(false)} url={url} rawUrl={paste.burn ? undefined : rawUrl} encrypted={!!paste.enc} />
 
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete this paste?">
         <p className="text-[13px] text-fg-muted">This removes it from the server immediately. Links to it will stop working.</p>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-4 flex justify-end gap-2 max-sm:grid max-sm:grid-cols-2">
           <Button onClick={() => setConfirmDelete(false)}>Cancel</Button>
           <Button variant="primary" className="bg-danger border-danger text-white" onClick={remove} loading={busy}>
             Delete
@@ -532,13 +646,13 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
           terminal, run <code className="font-mono text-[12px] text-fg">pastr token {paste.id}</code>.
         </p>
         <form
-          className="mt-3 flex gap-2"
+          className="mt-3 flex gap-2 max-sm:flex-col"
           onSubmit={(e) => {
             e.preventDefault();
             saveToken();
           }}
         >
-          <input value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder="Edit token" aria-label="Edit token" autoFocus className="h-8 min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 font-mono text-[12px]" />
+          <input value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder="Edit token" aria-label="Edit token" autoFocus className="h-8 min-w-0 flex-1 rounded-md border border-border bg-bg px-2.5 font-mono text-[12px] max-sm:h-10 max-sm:px-3" />
           <Button type="submit" variant="primary" disabled={!tokenInput.trim()}>
             Continue
           </Button>
@@ -557,7 +671,7 @@ export function PasteView({ mode, paste, lines: ssrLines, origin, embed, sizeLab
           autoFocus
           className="mt-3 w-full rounded-md border border-border bg-bg px-2.5 py-2 text-[13px]"
         />
-        <div className="mt-3 flex justify-end gap-2">
+        <div className="mt-3 flex justify-end gap-2 max-sm:grid max-sm:grid-cols-2">
           <Button onClick={() => setReport(false)}>Cancel</Button>
           <Button variant="primary" onClick={sendReport} loading={busy} disabled={reportReason.trim().length < 3}>
             Send report
@@ -588,7 +702,7 @@ function downloadContent(content: string, filename: string, mime?: string) {
 
 function Gate({ icon, title, body, action, error }: { icon: React.ReactNode; title: string; body: string; action: React.ReactNode; error: string | null }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-border bg-surface px-6 py-16 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-border bg-surface px-6 py-16 text-center max-sm:mx-4 max-sm:py-12">
       {icon}
       <h2 className="text-[15px] font-semibold">{title}</h2>
       <p className="max-w-md text-[13px] text-fg-muted">{body}</p>

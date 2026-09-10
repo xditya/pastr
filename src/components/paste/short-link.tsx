@@ -21,7 +21,7 @@ export function ShortLinkPanel({ link, shortUrl, views }: { link: string; shortU
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <div className="flex flex-1 flex-col gap-5 rounded-lg border border-border bg-surface px-6 py-8 sm:px-10">
+    <div className="flex flex-1 flex-col gap-5 rounded-lg border border-border bg-surface px-6 py-8 max-sm:rounded-none max-sm:border-x-0 max-sm:px-4 sm:px-10">
       <div className="flex items-center gap-2 font-mono text-[12px] text-fg-faint">
         <Link2 className="size-3.5" aria-hidden /> short link · {views.toLocaleString("en-US")} {views === 1 ? "visit" : "visits"}
       </div>

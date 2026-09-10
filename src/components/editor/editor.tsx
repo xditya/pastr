@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
-import { ClipboardPaste, Flame, ImageIcon, KeyRound, Lock, Save, ShieldAlert, Upload, X } from "lucide-react";
+import { ClipboardPaste, Flame, ImageIcon, KeyRound, Lock, Save, ShieldAlert, SlidersHorizontal, Upload, X } from "lucide-react";
 import { findSecrets } from "@/lib/secrets";
 import { DEFAULT_EXPIRY, EXPIRIES, LIMITS } from "@/lib/config";
 import { base64Bytes, byteLength, formatBytes } from "@/lib/bytes";
@@ -15,8 +15,11 @@ import { api, ApiError } from "@/lib/client";
 import { rememberPaste, setPrefs, updateLocalPaste } from "@/lib/local";
 import { useHotkeys, isMac } from "@/hooks/use-hotkeys";
 import { useMounted, usePrefs } from "@/hooks/use-local";
+import { useMediaQuery } from "@/hooks/use-media";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
+import { Dialog, SheetLinks } from "@/components/ui/dialog";
+import { BarButton, MobileBar } from "@/components/ui/mobile-bar";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
@@ -60,6 +63,8 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
   // Saved preferences only apply after hydration so the server-rendered form matches the first client render.
   const mounted = useMounted();
   const prefs = usePrefs();
+  /** Touch-primary device: phone layout with the bottom bar (false on the server and during hydration). */
+  const coarse = useMediaQuery("(pointer: coarse)");
 
   const [content, setContent] = useState(edit?.content ?? initial?.content ?? "");
   const [title, setTitle] = useState(edit?.title ?? initial?.title ?? "");
@@ -75,6 +80,8 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
   const [usePassword, setUsePassword] = useState(edit?.enc?.kdf === "password");
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState(false);
+  /** Phone-only options sheet (the desktop chip row is hidden there). */
+  const [optionsOpen, setOptionsOpen] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
@@ -83,8 +90,9 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
   const tabMovesFocus = useRef(false);
   const dragDepth = useRef(0);
 
+  // Focus the editor on desktop; on phones a focused textarea would raise the keyboard over the whole screen.
   useEffect(() => {
-    textareaRef.current?.focus();
+    if (!window.matchMedia("(pointer: coarse)").matches) textareaRef.current?.focus();
   }, []);
 
   const bytes = useMemo(() => byteLength(content), [content]);
@@ -356,6 +364,47 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
 
   const mac = mounted && isMac();
 
+  const langLabel = image
+    ? LANGS.find((l) => l.id === lang)?.label
+    : lang === "auto"
+      ? content
+        ? `${LANGS.find((l) => l.id === detected)?.label ?? "text"} · auto`
+        : "auto-detect"
+      : LANGS.find((l) => l.id === lang)?.label;
+  /** One-line summary for the phone status line, where the option chips are out of sight. */
+  const summary = [
+    langLabel?.toLowerCase(),
+    !edit && (expiry === "never" ? "never expires" : allowedExpiries.find((e) => e.id === expiry)?.label),
+    burn && "burn",
+    encrypt && (usePassword ? "password" : "encrypted"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const fields: Omit<FieldProps, "variant"> = {
+    image,
+    lang,
+    setLang,
+    content,
+    detected,
+    expiry,
+    setExpiry,
+    allowedExpiries,
+    edit: !!edit,
+    burn,
+    setBurn,
+    encrypt,
+    setEncrypt,
+    usePassword,
+    setUsePassword,
+    password,
+    setPassword,
+    removeImage: () => {
+      setContent("");
+      setLang("auto");
+    },
+  };
+
   return (
     <form
       method="post"
@@ -367,188 +416,324 @@ export function Editor({ edit, initial, maxBytes = LIMITS.maxBytes, expiries, on
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
-      {/* Title row: what it is, and the one primary action */}
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <input
-          name="title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Untitled"
-          maxLength={LIMITS.maxTitle}
-          aria-label="Title"
-          className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-[15px] font-medium placeholder:text-fg-faint hover:border-border focus:border-border-strong focus:bg-bg"
-        />
-        {onCancel && (
-          <Button type="button" variant="ghost" onClick={cancel}>
-            Cancel
+      {/* Desktop: a card. Phones: full-bleed, filling the space between the header and the bottom bar. */}
+      <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface max-sm:min-h-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0">
+        {/* Title row: what it is, and the one primary action */}
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2 max-sm:px-4">
+          <input
+            name="title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Untitled"
+            maxLength={LIMITS.maxTitle}
+            aria-label="Title"
+            className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-[15px] font-medium placeholder:text-fg-faint hover:border-border focus:border-border-strong focus:bg-bg max-sm:h-10"
+          />
+          {onCancel && (
+            <Button type="button" variant="ghost" onClick={cancel}>
+              Cancel
+            </Button>
+          )}
+          <Button type="submit" variant="primary" disabled={!canSave} loading={saving} title={`Save (${mac ? "⌘" : "Ctrl"}+S)`}>
+            <Save className="size-3.5" aria-hidden />
+            {edit ? "Save changes" : "Save"}
           </Button>
+        </div>
+
+        {/* Options row (desktop): uniform 32px chips, labels always visible. Phones with JS use the Options sheet below. */}
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2 max-sm:[.js_&]:hidden">
+          <OptionFields variant="inline" {...fields} />
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button type="button" onClick={pasteFromClipboard} title="Paste from clipboard" aria-label="Paste from clipboard">
+              <ClipboardPaste className="size-3.5" aria-hidden /> Clipboard
+            </Button>
+            <Button type="button" onClick={() => fileRef.current?.click()} title="Open a text file or image" aria-label="Open a text file or image">
+              <Upload className="size-3.5" aria-hidden /> File
+            </Button>
+          </div>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          className="hidden"
+          onChange={onFileInput}
+          accept="text/*,image/png,image/jpeg,image/gif,image/webp,.md,.json,.yml,.yaml,.toml,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.kt,.c,.cpp,.h,.cs,.rb,.php,.sh,.sql,.log,.csv,.xml,.diff,.patch"
+        />
+
+        {secrets.length > 0 && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-border bg-accent-soft px-3 py-2 text-[12.5px] text-fg max-sm:px-4">
+            <ShieldAlert className="size-3.5 shrink-0 text-danger" aria-hidden />
+            <span>
+              This looks like it contains {secrets.join(", ")}. Anyone with the link can read a plain paste — consider turning on <strong>Encrypt</strong> and <strong>Burn after read</strong>, or remove the secret first.
+            </span>
+          </div>
         )}
-        <Button type="submit" variant="primary" disabled={!canSave} loading={saving} title={`Save (${mac ? "⌘" : "Ctrl"}+S)`}>
-          <Save className="size-3.5" aria-hidden />
-          {edit ? "Save changes" : "Save"}
-        </Button>
+
+        {/* Editor surface */}
+        <div className={cn("relative flex min-h-[60vh] flex-1 overflow-hidden bg-code-bg transition-colors max-sm:min-h-0", dragging && "ring-2 ring-inset ring-accent")}>
+          {image ? (
+            <div className="flex flex-1 items-start justify-center overflow-auto p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element -- data URL, unknown dimensions */}
+              <img src={`data:${image};base64,${content}`} alt={title || "Image to paste"} className="max-h-[70vh] max-w-full rounded" />
+            </div>
+          ) : (
+            <>
+              <div ref={gutterRef} aria-hidden className="code editor-gutter select-none overflow-hidden border-r border-border bg-surface-2/60 py-3 text-right text-[var(--gutter)]">
+                {gutter}
+              </div>
+              <textarea
+                ref={textareaRef}
+                name="content"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                onScroll={syncScroll}
+                onKeyDown={handleKeyDown}
+                onPaste={onPaste}
+                wrap="off"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                placeholder={coarse ? "Paste or type here…" : "Paste or type here… a lone link becomes a short link."}
+                aria-label="Paste content"
+                className="editor-textarea min-h-[60vh] flex-1 resize-none bg-transparent px-4 py-3 outline-none placeholder:text-fg-faint max-sm:min-h-0"
+              />
+            </>
+          )}
+          {dragging && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-bg/70 text-[13px] text-fg-muted">
+              Drop to load the file
+            </div>
+          )}
+        </div>
+
+        {/* Status bar */}
+        <div className="flex items-center gap-x-3 overflow-hidden border-t border-border px-3 py-1.5 font-mono text-[11.5px] text-fg-faint max-sm:px-4">
+          <span className={cn("truncate max-sm:shrink-0", tooLarge && "text-danger")}>
+            {image
+              ? `${LANGS.find((l) => l.id === lang)?.label} · ${formatBytes(base64Bytes(content))} of ${formatBytes(LIMITS.maxImageBytes)}`
+              : `${lines} ${lines === 1 ? "line" : "lines"} · ${formatBytes(encrypt ? effectiveBytes : bytes)}`}
+            {tooLarge ? ` · over the ${formatBytes(maxBytes)} limit` : encrypt ? " encrypted" : ""}
+          </span>
+          {tabHint && <span className="shrink-0">Tab now moves focus</span>}
+          <noscript>
+            <span>Encryption and burn-after-read need JavaScript.</span>
+          </noscript>
+          <span className={cn("ml-auto hidden shrink-0 truncate md:inline", shortens && "text-fg")}>
+            {link
+              ? shortens
+                ? `looks like a link — save to get a short link that redirects to ${linkHost(link)}`
+                : "encrypted and burn pastes don’t redirect; saved as text"
+              : encrypt
+                ? usePassword
+                  ? "the password never leaves your browser"
+                  : "the key lives in the link after #"
+                : burn
+                  ? "destroyed after the first view"
+                  : "drop a file, an image, or a link to shorten"}
+          </span>
+          <span className={cn("ml-auto min-w-0 truncate sm:hidden", shortens && "text-fg")}>{shortens ? `short link → ${linkHost(link!)}` : summary}</span>
+        </div>
       </div>
 
-      {/* Options row: uniform 32px chips, labels always visible */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2">
-        <div className="flex w-full gap-1.5 sm:contents">
-        {image ? (
+      {/* Phones: bottom bar under the thumb, options in a sheet */}
+      <MobileBar label="Editor actions">
+        <BarButton icon={<SlidersHorizontal className="size-5" aria-hidden />} onClick={() => setOptionsOpen(true)} aria-haspopup="dialog" aria-expanded={optionsOpen}>
+          Options
+        </BarButton>
+        <BarButton icon={<ClipboardPaste className="size-5" aria-hidden />} onClick={pasteFromClipboard}>
+          Clipboard
+        </BarButton>
+        <BarButton icon={<Upload className="size-5" aria-hidden />} onClick={() => fileRef.current?.click()}>
+          File
+        </BarButton>
+      </MobileBar>
+      {optionsOpen && (
+        <Dialog open onClose={() => setOptionsOpen(false)} title={edit ? "Options" : "Paste options"}>
+          <div className="flex flex-col divide-y divide-border">
+            <OptionFields variant="sheet" {...fields} />
+          </div>
+          <Button type="button" variant="primary" size="lg" className="mt-4 w-full" onClick={() => setOptionsOpen(false)}>
+            Done
+          </Button>
+          <SheetLinks />
+        </Dialog>
+      )}
+    </form>
+  );
+}
+
+type FieldProps = {
+  /** "inline" is the desktop chip row (carries the form field names for the no-JS path); "sheet" is the phone settings list. */
+  variant: "inline" | "sheet";
+  image: string | undefined;
+  lang: string;
+  setLang: (v: string) => void;
+  content: string;
+  detected: string;
+  expiry: string;
+  setExpiry: (v: string) => void;
+  allowedExpiries: ReadonlyArray<{ id: string; label: string }>;
+  edit: boolean;
+  burn: boolean;
+  setBurn: (v: boolean) => void;
+  encrypt: boolean;
+  setEncrypt: (v: boolean) => void;
+  usePassword: boolean;
+  setUsePassword: (v: boolean) => void;
+  password: string;
+  setPassword: (v: string) => void;
+  removeImage: () => void;
+};
+
+function LangOptions({ lang, content, detected }: { lang: string; content: string; detected: string }) {
+  return (
+    <>
+      <option value="auto">{lang === "auto" && content ? `Auto · ${LANGS.find((l) => l.id === detected)?.label ?? "text"}` : "Auto-detect"}</option>
+      <optgroup label="Popular">
+        {POPULAR.map((id) => {
+          const l = LANGS.find((x) => x.id === id)!;
+          return (
+            <option key={l.id} value={l.id}>
+              {l.label}
+            </option>
+          );
+        })}
+      </optgroup>
+      <optgroup label="All languages">
+        {LANGS.filter((l) => !POPULAR.includes(l.id) && !l.mime).map((l) => (
+          <option key={l.id} value={l.id}>
+            {l.label}
+          </option>
+        ))}
+      </optgroup>
+    </>
+  );
+}
+
+/** The paste options, rendered once as desktop chips and once (on demand) as the phone sheet. Same state, two shapes. */
+function OptionFields(p: FieldProps) {
+  const imageLabel = LANGS.find((l) => l.id === p.lang)?.label;
+  if (p.variant === "sheet") {
+    return (
+      <>
+        {p.image ? (
+          <div className="flex items-center justify-between gap-3 py-3">
+            <span className="flex items-center gap-2 text-[15px] font-medium">
+              <ImageIcon className="size-4 text-fg-faint" aria-hidden /> {imageLabel} image
+            </span>
+            <Button type="button" size="sm" onClick={p.removeImage} aria-label="Remove image">
+              Remove
+            </Button>
+          </div>
+        ) : (
+          <label className="flex items-center justify-between gap-3 py-3">
+            <span className="text-[15px] font-medium">Language</span>
+            <Select look="row" value={p.lang} onChange={(e) => p.setLang(e.target.value)} aria-label="Language" className="w-[58%]">
+              <LangOptions lang={p.lang} content={p.content} detected={p.detected} />
+            </Select>
+          </label>
+        )}
+        {!p.edit && (
+          <label className="flex items-center justify-between gap-3 py-3">
+            <span className="text-[15px] font-medium">Expires</span>
+            <Select look="row" value={p.expiry} onChange={(e) => p.setExpiry(e.target.value)} aria-label="Expiry" className="w-[58%]">
+              {p.allowedExpiries.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.id === "never" ? "Never" : `in ${e.label}`}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
+        {!p.edit && (
+          <Switch appearance="row" checked={p.burn} onChange={p.setBurn} label="Burn after read" hint="destroyed after the first view">
+            Burn after read
+          </Switch>
+        )}
+        <Switch
+          appearance="row"
+          checked={p.encrypt}
+          onChange={p.setEncrypt}
+          label="Encrypt in browser"
+          disabled={p.edit}
+          hint={p.encrypt && p.usePassword ? "the password never leaves your browser" : "the key lives in the link after #"}
+        >
+          Encrypt in browser
+        </Switch>
+        {p.encrypt && !p.edit && (
+          <Switch appearance="row" checked={p.usePassword} onChange={p.setUsePassword} label="Use a password" hint="instead of a key in the link">
+            Use a password
+          </Switch>
+        )}
+        {p.encrypt && !p.edit && p.usePassword && (
+          <div className="py-3">
+            <input
+              type="password"
+              value={p.password}
+              onChange={(e) => p.setPassword(e.target.value)}
+              placeholder="Password"
+              autoComplete="new-password"
+              aria-label="Password"
+              className="h-11 w-full rounded-md border border-border bg-bg px-3 text-[16px] focus:border-border-strong"
+            />
+          </div>
+        )}
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="flex w-full gap-1.5 sm:contents">
+        {p.image ? (
           <span className="flex h-8 items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-[13px] text-fg-muted">
             <ImageIcon className="size-3.5 text-fg-faint" aria-hidden />
-            {LANGS.find((l) => l.id === lang)?.label}
-            <button type="button" onClick={() => { setContent(""); setLang("auto"); }} title="Remove image" aria-label="Remove image" className="rounded p-0.5 hover:bg-surface-2 hover:text-fg">
+            {imageLabel}
+            <button type="button" onClick={p.removeImage} title="Remove image" aria-label="Remove image" className="rounded p-0.5 hover:bg-surface-2 hover:text-fg">
               <X className="size-3.5" aria-hidden />
             </button>
           </span>
         ) : (
-        <Select name="lang" value={lang} onChange={(e) => setLang(e.target.value)} aria-label="Language" className="min-w-0 flex-1 sm:flex-none">
-          <option value="auto">{lang === "auto" && content ? `Auto · ${LANGS.find((l) => l.id === detected)?.label ?? "text"}` : "Auto-detect"}</option>
-          <optgroup label="Popular">
-            {POPULAR.map((id) => {
-              const l = LANGS.find((x) => x.id === id)!;
-              return (
-                <option key={l.id} value={l.id}>
-                  {l.label}
-                </option>
-              );
-            })}
-          </optgroup>
-          <optgroup label="All languages">
-            {LANGS.filter((l) => !POPULAR.includes(l.id) && !l.mime).map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.label}
-              </option>
-            ))}
-          </optgroup>
-        </Select>
+          <Select name="lang" value={p.lang} onChange={(e) => p.setLang(e.target.value)} aria-label="Language" className="min-w-0 flex-1 sm:flex-none">
+            <LangOptions lang={p.lang} content={p.content} detected={p.detected} />
+          </Select>
         )}
-        {!edit && (
-          <Select name="expires" value={expiry} onChange={(e) => setExpiry(e.target.value)} aria-label="Expiry" className="min-w-0 flex-1 sm:flex-none">
-            {allowedExpiries.map((e) => (
+        {!p.edit && (
+          <Select name="expires" value={p.expiry} onChange={(e) => p.setExpiry(e.target.value)} aria-label="Expiry" className="min-w-0 flex-1 sm:flex-none">
+            {p.allowedExpiries.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.id === "never" ? "Never expires" : `Expires in ${e.label}`}
               </option>
             ))}
           </Select>
         )}
-        </div>
-        {!edit && (
-          <>
-            <Switch checked={burn} onChange={setBurn} label="Burn after read">
-              <Flame className={cn("size-3.5", burn ? "text-warning" : "text-fg-faint")} aria-hidden /> Burn
-            </Switch>
-            <input type="hidden" name="burn" value={burn ? "true" : "false"} />
-          </>
-        )}
-        <Switch checked={encrypt} onChange={setEncrypt} label="Encrypt in browser" disabled={!!edit}>
-          <Lock className={cn("size-3.5", !encrypt && "text-fg-faint")} aria-hidden /> Encrypt
-        </Switch>
-        {encrypt && !edit && (
-          <Switch checked={usePassword} onChange={setUsePassword} label="Protect with a password instead of a link key">
-            <KeyRound className={cn("size-3.5", !usePassword && "text-fg-faint")} aria-hidden /> Password
-          </Switch>
-        )}
-        {encrypt && !edit && usePassword && (
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            autoComplete="new-password"
-            aria-label="Password"
-            className="h-8 w-36 rounded-md border border-border bg-bg px-2.5 text-[13px] focus:border-border-strong"
-          />
-        )}
-        <div className="ml-auto flex items-center gap-1.5">
-          <Button type="button" onClick={pasteFromClipboard} title="Paste from clipboard" aria-label="Paste from clipboard">
-            <ClipboardPaste className="size-3.5" aria-hidden /> Clipboard
-          </Button>
-          <Button type="button" onClick={() => fileRef.current?.click()} title="Open a text file or image" aria-label="Open a text file or image">
-            <Upload className="size-3.5" aria-hidden /> File
-          </Button>
-          <input ref={fileRef} type="file" className="hidden" onChange={onFileInput} accept="text/*,image/png,image/jpeg,image/gif,image/webp,.md,.json,.yml,.yaml,.toml,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.kt,.c,.cpp,.h,.cs,.rb,.php,.sh,.sql,.log,.csv,.xml,.diff,.patch" />
-        </div>
       </div>
-
-      {secrets.length > 0 && (
-        <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-border bg-accent-soft px-3 py-2 text-[12.5px] text-fg">
-          <ShieldAlert className="size-3.5 shrink-0 text-danger" aria-hidden />
-          <span>
-            This looks like it contains {secrets.join(", ")}. Anyone with the link can read a plain paste — consider turning on <strong>Encrypt</strong> and <strong>Burn after read</strong>, or remove the secret first.
-          </span>
-        </div>
-      )}
-
-      {/* Editor surface */}
-      <div
-        className={cn(
-          "relative flex min-h-[60vh] flex-1 overflow-hidden bg-code-bg transition-colors",
-          dragging && "ring-2 ring-inset ring-accent",
-        )}
-      >
-        {image ? (
-          <div className="flex flex-1 items-start justify-center p-4">
-            {/* eslint-disable-next-line @next/next/no-img-element -- data URL, unknown dimensions */}
-            <img src={`data:${image};base64,${content}`} alt={title || "Image to paste"} className="max-h-[70vh] max-w-full rounded" />
-          </div>
-        ) : (
+      {!p.edit && (
         <>
-        <div ref={gutterRef} aria-hidden className="code editor-gutter select-none overflow-hidden border-r border-border bg-surface-2/60 py-3 text-right text-[var(--gutter)]">
-          {gutter}
-        </div>
-        <textarea
-          ref={textareaRef}
-          name="content"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onScroll={syncScroll}
-          onKeyDown={handleKeyDown}
-          onPaste={onPaste}
-          wrap="off"
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          placeholder="Paste or type here… a lone link becomes a short link."
-          aria-label="Paste content"
-          className="editor-textarea min-h-[60vh] flex-1 resize-none bg-transparent px-4 py-3 outline-none placeholder:text-fg-faint"
-        />
+          <Switch checked={p.burn} onChange={p.setBurn} label="Burn after read">
+            <Flame className={cn("size-3.5", p.burn ? "text-warning" : "text-fg-faint")} aria-hidden /> Burn
+          </Switch>
+          <input type="hidden" name="burn" value={p.burn ? "true" : "false"} />
         </>
-        )}
-        {dragging && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-bg/70 text-[13px] text-fg-muted">
-            Drop to load the file
-          </div>
-        )}
-      </div>
-
-      {/* Status bar */}
-      <div className="flex items-center gap-x-3 overflow-hidden border-t border-border px-3 py-1.5 font-mono text-[11.5px] text-fg-faint">
-        <span className={cn("truncate", tooLarge && "text-danger")}>
-          {image
-            ? `${LANGS.find((l) => l.id === lang)?.label} · ${formatBytes(base64Bytes(content))} of ${formatBytes(LIMITS.maxImageBytes)}`
-            : `${lines} ${lines === 1 ? "line" : "lines"} · ${formatBytes(encrypt ? effectiveBytes : bytes)}`}
-          {tooLarge ? ` · over the ${formatBytes(maxBytes)} limit` : encrypt ? " encrypted" : ""}
-        </span>
-        {tabHint && <span className="shrink-0">Tab now moves focus</span>}
-        <noscript>
-          <span>Encryption and burn-after-read need JavaScript.</span>
-        </noscript>
-        <span className={cn("ml-auto hidden shrink-0 truncate md:inline", shortens && "text-fg")}>
-          {link
-            ? shortens
-              ? `looks like a link — save to get a short link that redirects to ${linkHost(link)}`
-              : "encrypted and burn pastes don’t redirect; saved as text"
-            : encrypt
-              ? usePassword
-                ? "the password never leaves your browser"
-                : "the key lives in the link after #"
-              : burn
-                ? "destroyed after the first view"
-                : "drop a file, an image, or a link to shorten"}
-        </span>
-      </div>
-      </div>
-    </form>
+      )}
+      <Switch checked={p.encrypt} onChange={p.setEncrypt} label="Encrypt in browser" disabled={p.edit}>
+        <Lock className={cn("size-3.5", !p.encrypt && "text-fg-faint")} aria-hidden /> Encrypt
+      </Switch>
+      {p.encrypt && !p.edit && (
+        <Switch checked={p.usePassword} onChange={p.setUsePassword} label="Protect with a password instead of a link key">
+          <KeyRound className={cn("size-3.5", !p.usePassword && "text-fg-faint")} aria-hidden /> Password
+        </Switch>
+      )}
+      {p.encrypt && !p.edit && p.usePassword && (
+        <input
+          type="password"
+          value={p.password}
+          onChange={(e) => p.setPassword(e.target.value)}
+          placeholder="Password"
+          autoComplete="new-password"
+          aria-label="Password"
+          className="h-8 w-36 rounded-md border border-border bg-bg px-2.5 text-[13px] focus:border-border-strong"
+        />
+      )}
+    </>
   );
 }
