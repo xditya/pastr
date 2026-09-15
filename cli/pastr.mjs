@@ -11,10 +11,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs, styleText } from "node:util";
+import * as util from "node:util";
 import { createInterface } from "node:readline";
 
-export const VERSION = "0.4.2";
+// styleText landed in Node 20.12; older 20.x runs without colour.
+const { parseArgs } = util;
+const styleText = util.styleText ?? ((_style, s) => s);
+
+export const VERSION = "0.4.3";
 const NAME = "pastr";
 const DEFAULT_HOST = "https://pastr.xditya.me";
 
