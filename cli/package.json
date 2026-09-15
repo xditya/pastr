@@ -4,7 +4,7 @@
   "description": "Paste from the terminal to a pastr instance: pipe, files, clipboard, with optional end-to-end encryption.",
   "type": "module",
   "bin": {
-    "pastr": "./pastr.mjs"
+    "pastr": "pastr.mjs"
   },
   "files": [
     "pastr.mjs",
@@ -23,7 +23,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xditya/pastr",
+    "url": "git+https://github.com/xditya/pastr.git",
     "directory": "cli"
   },
   "homepage": "https://github.com/xditya/pastr#readme"
